@@ -143,9 +143,7 @@ public:
     if (isFixed)
       return;  //a fixed object is immobile
     
-    /***************
-     TODO
-     ***************/
+    COM += timeStep * comVelocity;
     
     for (int i=0;i<currV.rows();i++)
       currV.row(i)<<QRot(origV.row(i), orientation)+COM;
@@ -227,7 +225,7 @@ public:
       return;
     
     //integrating external forces (only gravity)
-    Vector3d gravity; gravity<<0,-9.8,0.0;
+    Vector3d gravity; gravity << 0,-9.8,0.0;
     comVelocity+=gravity*timeStep;
   }
   
