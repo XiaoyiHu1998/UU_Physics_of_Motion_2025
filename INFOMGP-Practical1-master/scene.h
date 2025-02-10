@@ -143,10 +143,14 @@ public:
     if (isFixed)
       return;  //a fixed object is immobile
     
-    COM += timeStep * comVelocity;
-    
+    COM += comVelocity * timeStep;
+
+    orientation[0] += angVelocity[0] * timeStep;
+    orientation[1] += angVelocity[1] * timeStep;
+    orientation[2] += angVelocity[2] * timeStep;
+
     for (int i=0;i<currV.rows();i++)
-      currV.row(i)<<QRot(origV.row(i), orientation)+COM;
+      currV.row(i) << QRot(origV.row(i), orientation) + COM;
   }
   
   
