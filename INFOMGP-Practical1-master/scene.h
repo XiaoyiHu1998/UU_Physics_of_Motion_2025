@@ -1,6 +1,8 @@
 #ifndef SCENE_HEADER_FILE
 #define SCENE_HEADER_FILE
 
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <vector>
 #include <fstream>
 #include <igl/bounding_box.h>
@@ -145,9 +147,17 @@ public:
     
     COM += comVelocity * timeStep;
 
-    orientation[0] += angVelocity[0] * timeStep;
-    orientation[1] += angVelocity[1] * timeStep;
-    orientation[2] += angVelocity[2] * timeStep;
+    RowVector3d angDistance = angVelocity * timeStep;
+
+    Quaternion<double> orientationQuaternion = Quaternion<double>(orientation[0], orientation[1], orientation[2], orientation[3]);
+    Quaternion<double> angularRotationQuaternion = Quaternion<double>(1.0, angDistance.x(), angDistance.y(), angDistance.z());
+    Quaternion<double> newOrientation = angularRotationQuaternion * orientationQuaternion;
+
+    orientation[0] = newOrientation.w(); // Assuming w coefficient is the first element (according to QRot/QMult)
+    orientation[1] = newOrientation.x();
+    orientation[2] = newOrientation.y();
+    orientation[3] = newOrientation.z();
+
 
     for (int i=0;i<currV.rows();i++)
       currV.row(i) << QRot(origV.row(i), orientation) + COM;
@@ -178,11 +188,11 @@ public:
     RowVector3d naturalCOM; naturalCOM.setZero();
     Matrix3d IT; IT.setZero();
     for (int i=0;i<T.rows();i++){
-      Vector3d e01=origV.row(T(i,1))-origV.row(T(i,0));
-      Vector3d e02=origV.row(T(i,2))-origV.row(T(i,0));
-      Vector3d e03=origV.row(T(i,3))-origV.row(T(i,0));
-      Vector3d tetCentroid=(origV.row(T(i,0))+origV.row(T(i,1))+origV.row(T(i,2))+origV.row(T(i,3)))/4.0;
-      tetVolumes(i)=std::abs(e01.dot(e02.cross(e03)))/6.0;
+      Vector3d e01 = origV.row(T(i,1)) - origV.row(T(i,0));
+      Vector3d e02 = origV.row(T(i,2)) - origV.row(T(i,0));
+      Vector3d e03 = origV.row(T(i,3)) - origV.row(T(i,0));
+      Vector3d tetCentroid = (origV.row(T(i,0)) + origV.row(T(i,1)) + origV.row(T(i,2)) + origV.row(T(i,3))) / 4.0;
+      tetVolumes(i)=std::abs(e01.dot(e02.cross(e03))) / 6.0;
       
       naturalCOM+=tetVolumes(i)*tetCentroid;
       
@@ -230,7 +240,7 @@ public:
     
     //integrating external forces (only gravity)
     Vector3d gravity; gravity << 0,-9.8,0.0;
-    comVelocity+=gravity*timeStep;
+    comVelocity += gravity * timeStep;
   }
   
   

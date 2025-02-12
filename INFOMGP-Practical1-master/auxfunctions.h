@@ -62,8 +62,8 @@ inline Eigen::RowVector4d QExp(const Eigen::RowVector4d& q)
 
 //Rotating an imaginary quaternion p (or a 3D vector) by q*p*q^{-1}
 inline Eigen::RowVector3d QRot(const Eigen::RowVector3d p, const Eigen::RowVector4d q){
-    Eigen::RowVector4d quatp; quatp<<0.0,p;
-    Eigen::RowVector4d w=QMult(q, QMult(quatp, QInv(q)));
+    Eigen::RowVector4d quatp; quatp << 0.0, p;
+    Eigen::RowVector4d w = QMult(q, QMult(quatp, QInv(q)));
     return w.tail(3);
 }
 
