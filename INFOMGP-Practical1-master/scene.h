@@ -317,33 +317,32 @@ public:
    This function handles a collision between objects ro1 and ro2 when found, by assigning impulses to both objects.
    Input: RigidObjects m1, m2
    depth: the depth of penetration
-   contactNormal: the normal of the conact measured m1->m2
+   contactNormal: the normal of the contact measured m1->m2
    penPosition: a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point
    CRCoeff: the coefficient of restitution
    *********************************************************************/
-  void handleCollision(Mesh& m1, Mesh& m2,const double& depth, const RowVector3d& contactNormal,const RowVector3d& penPosition, const double CRCoeff){
+  void handleCollision(Mesh& m1, Mesh& m2, const double& depth, const RowVector3d& contactNormal, const RowVector3d& penPosition, const double CRCoeff){
     
     
     std::cout<<"contactNormal: "<<contactNormal<<std::endl;
     std::cout<<"penPosition: "<<penPosition<<std::endl;
     //std::cout<<"handleCollision begin"<<std::endl;
-    
+   
     
     // Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. 
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
-    RowVector3d contactPosition;
     if (m1.isFixed){
-      /***************
-       TODO
-       ***************/
-    } else if (m2.isFixed){
-      /***************
-       TODO
-       ***************/
-    } else { //inverse mass weighting
-      /***************
-       TODO
-       ***************/
+        m2.COM += contactNormal * depth;
+    }
+    else if (m2.isFixed) {
+        m1.COM += -1 * contactNormal * depth;
+    } 
+    else { //inverse mass weighting
+        double displacementM1 = (depth * m2.totalMass) / (m1.totalMass + m2.totalMass);
+        double displacementM2 = (depth * m1.totalMass) / (m1.totalMass + m2.totalMass);
+
+        m1.COM += -1 * contactNormal * displacementM1;
+        m2.COM += contactNormal * displacementM2;
     }
     
     
