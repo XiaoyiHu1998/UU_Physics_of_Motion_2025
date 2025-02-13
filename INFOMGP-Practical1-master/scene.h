@@ -175,10 +175,18 @@ public:
       return;
     }
     
+    //TODO: if not correct, don't update comvelocity between impulse calculations
     //update linear and angular velocity according to all impulses
-    /***************
-     TODO
-     ***************/
+    for (int i = 0; i < currImpulses.size(); i++)
+    {
+        RowVector3d impulsePosition = currImpulses[i].first;
+        RowVector3d impulseDirection = currImpulses[i].second;
+
+        comVelocity = comVelocity * (impulseDirection / totalMass);
+
+        RowVector3d contactArm = impulseDirection - COM;
+        
+    }
   }
   
   RowVector3d initStaticProperties(const double density)
@@ -324,13 +332,14 @@ public:
   void handleCollision(Mesh& m1, Mesh& m2, const double& depth, const RowVector3d& contactNormal, const RowVector3d& penPosition, const double CRCoeff){
     
     
-    std::cout<<"contactNormal: "<<contactNormal<<std::endl;
-    std::cout<<"penPosition: "<<penPosition<<std::endl;
+    std::cout << "contactNormal: " << contactNormal << std::endl;
+    std::cout << "penPosition: " << penPosition << std::endl;
     //std::cout<<"handleCollision begin"<<std::endl;
    
     
     // Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. 
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
+    RowVector3d contactPosition = penPosition + depth * contactNormal;
     if (m1.isFixed){
         m2.COM += contactNormal * depth;
     }
@@ -341,17 +350,18 @@ public:
         double displacementM1 = (depth * m2.totalMass) / (m1.totalMass + m2.totalMass);
         double displacementM2 = (depth * m1.totalMass) / (m1.totalMass + m2.totalMass);
 
-        m1.COM += -1 * contactNormal * displacementM1;
+        m1.COM += (-1 * contactNormal) * displacementM1;
         m2.COM += contactNormal * displacementM2;
     }
     
     
     //Create impulse and push them into m1.impulses and m2.impulses.
-    /***************
-     TODO
-     ***************/
-    
-    RowVector3d impulse=RowVector3d::Zero();  //change this to your result
+    double enumerator = ((1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal));
+    double termM1 = (contactPosition - m1.COM).cross(contactNormal).transpose()) * m1.invIT * (contactPosition - m1.COM).cross(contactNormal);
+    double termM2 = (contactPosition - m1.COM).cross(contactNormal).transpose()) * m1.invIT * (contactPosition - m1.COM).cross(contactNormal);
+    double denomerator = (1.0 / m1.totalMass + 1.0 / m2.totalMass) + termM1 + termM2;
+    double impulseMagnitude = enumerator / denomerator;
+    RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
     
     std::cout<<"impulse: "<<impulse<<std::endl;
     if (impulse.norm()>10e-6){
