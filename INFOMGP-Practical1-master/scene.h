@@ -356,11 +356,22 @@ public:
     
     
     //Create impulse and push them into m1.impulses and m2.impulses.
-    double enumerator = ((1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal));
-    double termM1 = (contactPosition - m1.COM).cross(contactNormal).transpose()) * m1.invIT * (contactPosition - m1.COM).cross(contactNormal);
-    double termM2 = (contactPosition - m1.COM).cross(contactNormal).transpose()) * m1.invIT * (contactPosition - m1.COM).cross(contactNormal);
+    RowVector3d contactArm1 = contactPosition - m1.COM;
+    RowVector3d contactArm2 = contactPosition - m2.COM;
+    double enumerator = (1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
+    
+    RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.invIT;
+    Vector3d termM1Factor2 = contactArm1.cross(contactNormal).transpose();
+    RowVector3d termM2Factor1 = contactArm2.cross(contactNormal) * m2.invIT;
+    Vector3d termM2Factor2 = contactArm2.cross(contactNormal).transpose();
+
+    // Explicit cross product and coefficient-wise product
+    double termM1 = termM1Factor1 * termM1Factor2;
+    double termM2 = termM2Factor1 * termM2Factor2;
+
     double denomerator = (1.0 / m1.totalMass + 1.0 / m2.totalMass) + termM1 + termM2;
     double impulseMagnitude = enumerator / denomerator;
+
     RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
     
     std::cout<<"impulse: "<<impulse<<std::endl;
