@@ -182,10 +182,9 @@ public:
         RowVector3d impulsePosition = currImpulses[i].first;
         RowVector3d impulseDirection = currImpulses[i].second;
 
-        comVelocity = comVelocity * (impulseDirection / totalMass);
-
-        RowVector3d contactArm = impulseDirection - COM;
-        
+        // Error caused by ambiguity of * operator on two vectors
+        //comVelocity = comVelocity * (impulseDirection / totalMass);
+        angVelocity = angVelocity + (impulseDirection.transpose() * getCurrInvInertiaTensor()) * (impulsePosition - COM).cross(impulseDirection.normalized());
     }
   }
   
