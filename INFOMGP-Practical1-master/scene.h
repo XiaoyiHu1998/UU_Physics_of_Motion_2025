@@ -127,40 +127,47 @@ public:
   
   
   //return the current inverted inertia tensor around the current COM. Update it by applying the orientation
-  Matrix3d getCurrInvInertiaTensor(){
-    Matrix3d R=Q2RotMatrix(orientation);
-    
-    /***************
-     TODO
-     ***************/
-    
-    return Matrix3d::Identity(3,3);  //change this to your result
+  Matrix3d getCurrInvInertiaTensor() {
+      Matrix3d R = Q2RotMatrix(orientation);
+      return R * invIT * R.transpose();
   }
   
   
   //Update the current position and orientation by integrating the linear and angular velocities, and update currV accordingly
   //You need to modify this according to its purpose
-  void updatePosition(double timeStep){
-    //just forward Euler now
-    if (isFixed)
-      return;  //a fixed object is immobile
-    
-    COM += comVelocity * timeStep;
+  void updatePosition(double timeStep) {
+      if (isFixed)
+          return;  // A fixed object is immobile
 
-    RowVector3d angDistance = angVelocity * timeStep;
+      // Update the center of mass position
+      COM += comVelocity * timeStep;
 
-    Quaternion<double> orientationQuaternion = Quaternion<double>(orientation[0], orientation[1], orientation[2], orientation[3]);
-    Quaternion<double> angularRotationQuaternion = Quaternion<double>(1.0, angDistance.x(), angDistance.y(), angDistance.z());
-    Quaternion<double> newOrientation = angularRotationQuaternion * orientationQuaternion;
+      // Calculate the angle of rotation
+      double angle = angVelocity.norm() * timeStep;
 
-    orientation[0] = newOrientation.w(); // Assuming w coefficient is the first element (according to QRot/QMult)
-    orientation[1] = newOrientation.x();
-    orientation[2] = newOrientation.y();
-    orientation[3] = newOrientation.z();
+      Quaternion<double> orientationQuaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
 
+      if (angle != 0.0) {
+          // Normalize the angular velocity to get the rotation axis
+          Vector3d rotationAxis = angVelocity.normalized();
 
-    for (int i=0;i<currV.rows();i++)
-      currV.row(i) << QRot(origV.row(i), orientation) + COM;
+          // Create a quaternion representing the rotation due to angular velocity
+          Quaternion<double> deltaOrientation = Quaternion<double>(AngleAxisd(angle, rotationAxis));
+
+          // Update the orientation
+          orientationQuaternion = deltaOrientation * orientationQuaternion;
+          orientationQuaternion.normalize();
+      }
+
+      // Update the stored orientation
+      orientation[0] = orientationQuaternion.w();
+      orientation[1] = orientationQuaternion.x();
+      orientation[2] = orientationQuaternion.y();
+      orientation[3] = orientationQuaternion.z();
+
+      // Update the current vertex positions
+      for (int i = 0; i < currV.rows(); i++)
+          currV.row(i) = QRot(origV.row(i), orientation) + COM;
   }
   
   
@@ -179,13 +186,28 @@ public:
     //update linear and angular velocity according to all impulses
     for (int i = 0; i < currImpulses.size(); i++)
     {
-        RowVector3d impulsePosition = currImpulses[i].first;
-        RowVector3d impulseDirection = currImpulses[i].second;
+        RowVector3d impulsePosRow = currImpulses[i].first;   // (1×3)
+        RowVector3d impulseDirRow = currImpulses[i].second;  // (1×3)
 
-        // Error caused by ambiguity of * operator on two vectors
-        //comVelocity = comVelocity * (impulseDirection / totalMass);
-        angVelocity = angVelocity + (impulseDirection.transpose() * getCurrInvInertiaTensor()) * (impulsePosition - COM).cross(impulseDirection.normalized());
+        // Convert to column vectors for cross:
+        Vector3d impulsePosCol = impulsePosRow.transpose();
+        Vector3d impulseDirCol = impulseDirRow.transpose();
+        Vector3d COMcol = COM.transpose();
+
+        // Update COM velocity: row vector plus row vector
+        // But if comVelocity is a RowVector3d, then:
+        comVelocity += impulseDirRow / totalMass;
+
+        // Cross product must be done on Vector3d:
+        Vector3d crossVec = (impulsePosCol - COMcol).cross(impulseDirCol);
+
+        // Multiply by 3×3 inertia, giving a Vector3d:
+        Vector3d deltaAngVel = getCurrInvInertiaTensor() * crossVec;
+
+        // If angVelocity is a RowVector3d, convert back to row:
+        angVelocity += deltaAngVel.transpose();
     }
+    currImpulses.clear();
   }
   
   RowVector3d initStaticProperties(const double density)
@@ -248,6 +270,7 @@ public:
     //integrating external forces (only gravity)
     Vector3d gravity; gravity << 0,-9.8,0.0;
     comVelocity += gravity * timeStep;
+
   }
   
   
@@ -352,16 +375,20 @@ public:
         m1.COM += (-1 * contactNormal) * displacementM1;
         m2.COM += contactNormal * displacementM2;
     }
+
+    // Effective inverse masses (fixed objects are treated as infinite mass)
+    double invMass1 = m1.isFixed ? 0.0 : 1.0 / m1.totalMass;
+    double invMass2 = m2.isFixed ? 0.0 : 1.0 / m2.totalMass;
     
     
     //Create impulse and push them into m1.impulses and m2.impulses.
     RowVector3d contactArm1 = contactPosition - m1.COM;
     RowVector3d contactArm2 = contactPosition - m2.COM;
-    double enumerator = (1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
+    double enumerator = -(1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
     
-    RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.invIT;
+    RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.getCurrInvInertiaTensor();
     Vector3d termM1Factor2 = contactArm1.cross(contactNormal).transpose();
-    RowVector3d termM2Factor1 = contactArm2.cross(contactNormal) * m2.invIT;
+    RowVector3d termM2Factor1 = contactArm2.cross(contactNormal) * m2.getCurrInvInertiaTensor();
     Vector3d termM2Factor2 = contactArm2.cross(contactNormal).transpose();
 
     // Explicit cross product and coefficient-wise product
@@ -374,9 +401,9 @@ public:
     RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
     
     std::cout<<"impulse: "<<impulse<<std::endl;
-    if (impulse.norm()>10e-6){
-      m1.currImpulses.push_back(Impulse(contactPosition, -impulse));
-      m2.currImpulses.push_back(Impulse(contactPosition, impulse));
+    if (impulse.norm()>1e-6){
+      m1.currImpulses.push_back(Impulse(contactPosition, impulse));
+      m2.currImpulses.push_back(Impulse(contactPosition, -impulse));
     }
     
     //std::cout<<"handleCollision end"<<std::endl;
