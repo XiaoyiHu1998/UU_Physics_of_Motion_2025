@@ -148,10 +148,6 @@ public:
       double scalarComponent = cos(theta / 2.0);
       RowVector3d vectorComponent = angVelocity.normalized() * sin(theta / 2.0);
       
-      Quaternion<double> rotationQuaternion;
-      rotationQuaternion.w() = scalarComponent;
-      rotationQuaternion.vec() = vectorComponent;
-      
       Quaternion<double> orientationQuaternion = Quaternion<double>(orientation[0], orientation[1], orientation[2], orientation[3]);
       Quaternion<double> rotationQuaternion = Quaternion<double>(AngleAxisd(theta, angVelocity.normalized()));
       

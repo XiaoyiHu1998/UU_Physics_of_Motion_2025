@@ -154,16 +154,19 @@ class CustomMenu : public igl::opengl::glfw::imgui::ImGuiMenu
         for (int i = 0; i < scene.meshes.size(); i++)
         {
             std::string label = "Mesh " + std::to_string(i);
+            ImGui::Text(label.c_str());
             float velocityX = static_cast<float>(scene.meshes[i].comVelocity.data()[0]);
             float velocityY = static_cast<float>(scene.meshes[i].comVelocity.data()[1]);
             float velocityZ = static_cast<float>(scene.meshes[i].comVelocity.data()[2]);
             float velocityValues[3] = {velocityX, velocityY, velocityZ};
-            if (ImGui::DragFloat3(label.c_str(), velocityValues))
+            if (ImGui::DragFloat3("velocity", velocityValues))
             {
                 scene.meshes[i].comVelocity.data()[0] = static_cast<double>(velocityValues[0]);
                 scene.meshes[i].comVelocity.data()[1] = static_cast<double>(velocityValues[1]);
                 scene.meshes[i].comVelocity.data()[2] = static_cast<double>(velocityValues[2]);
             }
+
+            ImGui::Separator();
         }
     }
   }
