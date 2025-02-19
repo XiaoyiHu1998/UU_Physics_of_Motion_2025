@@ -196,10 +196,10 @@ public:
         comVelocity += impulseDirRow / totalMass;
 
         // Cross product must be done on Vector3d:
-        Vector3d crossVec = (impulsePosCol - COMcol).cross(impulseDirCol);
+        Vector3d crossVec = (impulsePosCol - COMcol).cross(impulseDirCol.normalized());
 
         // Multiply by 3×3 inertia, giving a Vector3d:
-        Vector3d deltaAngVel = getCurrInvInertiaTensor() * crossVec;
+        Vector3d deltaAngVel = impulseDirCol.norm() * getCurrInvInertiaTensor() * crossVec;
 
         // If angVelocity is a RowVector3d, convert back to row:
         angVelocity += deltaAngVel.transpose();
@@ -349,8 +349,6 @@ public:
    CRCoeff: the coefficient of restitution
    *********************************************************************/
   void handleCollision(Mesh& m1, Mesh& m2, const double& depth, const RowVector3d& contactNormal, const RowVector3d& penPosition, const double CRCoeff){
-    
-    
     std::cout << "contactNormal: " << contactNormal << std::endl;
     std::cout << "penPosition: " << penPosition << std::endl;
     //std::cout<<"handleCollision begin"<<std::endl;
