@@ -143,27 +143,24 @@ public:
       COM += comVelocity * timeStep;
 
       // Calculate the angle of rotation
-      double angle = angVelocity.norm() * timeStep;
+      double theta = angVelocity.norm() * timeStep;
 
-      Quaternion<double> orientationQuaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
-
-      if (angle != 0.0) {
-          // Normalize the angular velocity to get the rotation axis known in the slides as ê.
-          Vector3d rotationAxis = angVelocity.normalized();
-
-          // Create a quaternion representing the rotation due to angular velocity
-          Quaternion<double> deltaOrientation = Quaternion<double>(AngleAxisd(angle, rotationAxis));
-
-          // Update the orientation
-          orientationQuaternion = deltaOrientation * orientationQuaternion;
-          orientationQuaternion.normalize();
-      }
-
+      double scalarComponent = cos(theta / 2.0);
+      RowVector3d vectorComponent = angVelocity.normalized() * sin(theta / 2.0);
+      
+      Quaternion<double> rotationQuaternion;
+      rotationQuaternion.w() = scalarComponent;
+      rotationQuaternion.vec() = vectorComponent;
+      
+      Quaternion<double> orientationQuaternion = Quaternion<double>(orientation[0], orientation[1], orientation[2], orientation[3]);
+      
       // Update the stored orientation
+      orientationQuaternion = rotationQuaternion * orientationQuaternion * rotationQuaternion.inverse();
       orientation[0] = orientationQuaternion.w();
       orientation[1] = orientationQuaternion.x();
       orientation[2] = orientationQuaternion.y();
       orientation[3] = orientationQuaternion.z();
+
 
       // Update the current vertex positions
       for (int i = 0; i < currV.rows(); i++)
