@@ -15,6 +15,7 @@ bool animationHack;  //fixing the weird camera bug in libigl
 //initial values
 float timeStep = 0.02;
 float CRCoeff= 1.0;
+float dragCoefficient = 0.0;
 
 Scene scene;
 
@@ -143,6 +144,27 @@ class CustomMenu : public igl::opengl::glfw::imgui::ImGuiMenu
       if (ImGui::InputFloat("Time Step", &timeStep)) {
         mgpViewer.core().animation_max_fps = (((int)1.0/timeStep));
       }
+
+      ImGui::InputFloat("dragCoefficient", &dragCoefficient);
+    }
+
+    if (ImGui::CollapsingHeader("Mesh Velocities", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Draw Mesh velocities
+        for (int i = 0; i < scene.meshes.size(); i++)
+        {
+            std::string label = "Mesh " + std::to_string(i);
+            float velocityX = static_cast<float>(scene.meshes[i].comVelocity.data()[0]);
+            float velocityY = static_cast<float>(scene.meshes[i].comVelocity.data()[1]);
+            float velocityZ = static_cast<float>(scene.meshes[i].comVelocity.data()[2]);
+            float velocityValues[3] = {velocityX, velocityY, velocityZ};
+            if (ImGui::DragFloat3(label.c_str(), velocityValues))
+            {
+                scene.meshes[i].comVelocity.data()[0] = static_cast<double>(velocityValues[0]);
+                scene.meshes[i].comVelocity.data()[1] = static_cast<double>(velocityValues[1]);
+                scene.meshes[i].comVelocity.data()[2] = static_cast<double>(velocityValues[2]);
+            }
+        }
     }
   }
 };
