@@ -51,6 +51,8 @@ public:
   RowVector3d angVelocity;  //the angular velocity of the object.
   
   //dynamics
+  RowVector3d ExternalImpulsePosition; // External impulse position to be edited by user via UI
+  RowVector3d ExternalImpulseDirection; // External impulse direction to be edited by user via UI
   std::vector<Impulse> currImpulses;  //current list of impulses, updated by collision handling
   
   //checking collision between bounding boxes, and consequently the boundary tets if succeeds.
@@ -285,6 +287,8 @@ public:
     orientation=_orientation;
     comVelocity.setZero();
     angVelocity.setZero();
+    ExternalImpulsePosition.setZero();
+    ExternalImpulseDirection.setZero();
     
     RowVector3d naturalCOM;  //by the geometry of the object
     
