@@ -161,8 +161,6 @@ public:
       orientation[2] = orientationQuaternion.y();
       orientation[3] = orientationQuaternion.z();
 
-      // REMOVE THIS COMMENT AT ONCE
-
 
       // Update the current vertex positions
       for (int i = 0; i < currV.rows(); i++)
