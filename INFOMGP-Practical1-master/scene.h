@@ -148,7 +148,7 @@ public:
       Quaternion<double> orientationQuaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
 
       if (angle != 0.0) {
-          // Normalize the angular velocity to get the rotation axis
+          // Normalize the angular velocity to get the rotation axis known in the slides as ê.
           Vector3d rotationAxis = angVelocity.normalized();
 
           // Create a quaternion representing the rotation due to angular velocity
@@ -270,7 +270,6 @@ public:
     //integrating external forces (only gravity)
     Vector3d gravity; gravity << 0,-9.8,0.0;
     comVelocity += gravity * timeStep;
-
   }
   
   
@@ -361,12 +360,22 @@ public:
     
     // Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. 
     // Remember to respect the direction of contactNormal and update penPosition accordingly.
+
+    double invMass1;
+    double invMass2;
+    double massM1;
+    double massM2;
+
     RowVector3d contactPosition = penPosition + depth * contactNormal;
     if (m1.isFixed){
         m2.COM += contactNormal * depth;
+        invMass1 = 0.0;
+        massM1 = std::numeric_limits<double>::max();
     }
     else if (m2.isFixed) {
         m1.COM += -1 * contactNormal * depth;
+        invMass2 = 0.0;
+        massM2 = std::numeric_limits<double>::max();
     } 
     else { //inverse mass weighting
         double displacementM1 = (depth * m2.totalMass) / (m1.totalMass + m2.totalMass);
@@ -374,11 +383,14 @@ public:
 
         m1.COM += (-1 * contactNormal) * displacementM1;
         m2.COM += contactNormal * displacementM2;
+
+        double invMass1 = 1.0 / m1.totalMass;
+        double invMass2 = 1.0 / m2.totalMass;
     }
 
     // Effective inverse masses (fixed objects are treated as infinite mass)
-    double invMass1 = m1.isFixed ? 0.0 : 1.0 / m1.totalMass;
-    double invMass2 = m2.isFixed ? 0.0 : 1.0 / m2.totalMass;
+    invMass1 = m1.isFixed ? 0.0 : 1.0 / m1.totalMass;
+    invMass2 = m2.isFixed ? 0.0 : 1.0 / m2.totalMass;
     
     
     //Create impulse and push them into m1.impulses and m2.impulses.
@@ -395,7 +407,7 @@ public:
     double termM1 = termM1Factor1 * termM1Factor2;
     double termM2 = termM2Factor1 * termM2Factor2;
 
-    double denomerator = (1.0 / m1.totalMass + 1.0 / m2.totalMass) + termM1 + termM2;
+    double denomerator = (invMass1 + invMass2) + termM1 + termM2;
     double impulseMagnitude = enumerator / denomerator;
 
     RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
