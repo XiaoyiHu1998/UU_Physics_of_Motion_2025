@@ -145,7 +145,9 @@ public:
       COM += comVelocity * timeStep; //comVelocity is alreadyt updated for t + deltaT, so therefore this is semi-implicit euler time integration
 
       // Calculate the angle of rotation
-      double theta = angVelocity.norm() * timeStep;
+      double angle = angVelocity.norm() * timeStep;
+
+      Quaternion<double> orientationQuaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
 
       double scalarComponent = cos(theta / 2.0);
       RowVector3d vectorComponent = angVelocity.normalized() * sin(theta / 2.0);
@@ -166,7 +168,7 @@ public:
       for (int i = 0; i < currV.rows(); i++)
           currV.row(i) = QRot(origV.row(i), orientation) + COM;
   }
-  
+ 
   
   //Updating velocity *instantaneously*. i.e., not integration from acceleration, but as a result of a collision impulse from the "impulses" list
   //You need to modify this for that purpose.
@@ -183,8 +185,8 @@ public:
     //update linear and angular velocity according to all impulses
     for (int i = 0; i < currImpulses.size(); i++)
     {
-        RowVector3d impulsePosRow = currImpulses[i].first;   // (1×3)
-        RowVector3d impulseDirRow = currImpulses[i].second;  // (1×3)
+        RowVector3d impulsePosRow = currImpulses[i].first;   // (1ï¿½3)
+        RowVector3d impulseDirRow = currImpulses[i].second;  // (1ï¿½3)
 
         // Convert to column vectors for cross:
         Vector3d impulsePosCol = impulsePosRow.transpose();
@@ -193,12 +195,12 @@ public:
 
         // Update COM velocity: row vector plus row vector
         // But if comVelocity is a RowVector3d, then:
-        comVelocity += impulseDirRow / totalMass;
+        comVelocity += (impulseDirRow / totalMass);
 
         // Cross product must be done on Vector3d:
         Vector3d crossVec = (impulsePosCol - COMcol).cross(impulseDirCol.normalized());
 
-        // Multiply by 3×3 inertia, giving a Vector3d:
+        // Multiply by 3ï¿½3 inertia, giving a Vector3d:
         Vector3d deltaAngVel = impulseDirCol.norm() * getCurrInvInertiaTensor() * crossVec;
 
         // If angVelocity is a RowVector3d, convert back to row:
@@ -259,7 +261,7 @@ public:
   
   //Integrating the linear and angular velocities of the object
   //You need to modify this to integrate from acceleration in the field (basically gravity)
-  void updateVelocity(double timeStep){
+  void updateVelocity(double timeStep, double dragCoefficient){
     
     if (isFixed)
       return;
@@ -267,13 +269,21 @@ public:
     //integrating external forces (only gravity)
     Vector3d gravity; gravity << 0,-9.8,0.0;
     comVelocity += gravity * timeStep;
+
+    // Apply drag
+    RowVector3d linearDrag = -dragCoefficient * comVelocity;
+    Vector3d angularDrag = -dragCoefficient * angVelocity;
+
+    // We're using the fact that F = ma, so that a = F/m.
+    comVelocity += (linearDrag / totalMass) * timeStep;
+    angVelocity += (getCurrInvInertiaTensor() * angularDrag) * timeStep;
   }
   
   
   //the full integration for the time step (velocity + position)
   //You need to modify this if you are changing the integration
-  void integrate(double timeStep){
-    updateVelocity(timeStep);
+  void integrate(double timeStep, double dragCoefficient){
+    updateVelocity(timeStep, dragCoefficient);
     updatePosition(timeStep);
   }
   
@@ -323,91 +333,116 @@ public:
     for (int i=0;i<boundTets.size();i++)
       boundTets(i)=boundTList[i];
   }
-  
-  ~Mesh(){}
+
+~Mesh() {}
 };
 
 //This class contains the entire scene operations, and the engine time loop.
-class Scene{
+class Scene {
 public:
-  double currTime;
-  int numFullV, numFullT;
-  std::vector<Mesh> meshes;
-  
-  //adding an objects. You do not need to update this generally
-  void addMesh(const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation){
-    
-    Mesh m(V,F, T, density, isFixed, COM, orientation);
-    meshes.push_back(m);
-  }
-  
-  /*********************************************************************
-   This function handles a collision between objects ro1 and ro2 when found, by assigning impulses to both objects.
-   Input: RigidObjects m1, m2
-   depth: the depth of penetration
-   contactNormal: the normal of the contact measured m1->m2
-   penPosition: a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point
-   CRCoeff: the coefficient of restitution
-   *********************************************************************/
-  void handleCollision(Mesh& m1, Mesh& m2, const double& depth, const RowVector3d& contactNormal, const RowVector3d& penPosition, const double CRCoeff){
-    std::cout << "contactNormal: " << contactNormal << std::endl;
-    std::cout << "penPosition: " << penPosition << std::endl;
-    //std::cout<<"handleCollision begin"<<std::endl;
-   
-    
-    // Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. 
-    // Remember to respect the direction of contactNormal and update penPosition accordingly.
+    double currTime;
+    int numFullV, numFullT;
+    std::vector<Mesh> meshes;
 
-    double invMass1;
-    double invMass2;
-    double massM1;
-    double massM2;
+    //adding an objects. You do not need to update this generally
+    void addMesh(const MatrixXd& V, const MatrixXi& F, const MatrixXi& T, const double density, const bool isFixed, const RowVector3d& COM, const RowVector4d& orientation) {
 
-    RowVector3d contactPosition = penPosition + depth * contactNormal;
-    if (m1.isFixed){
-        m2.COM += contactNormal * depth;
-        invMass1 = 0.0;
-        massM1 = std::numeric_limits<double>::max();
-    }
-    else if (m2.isFixed) {
-        m1.COM += -1 * contactNormal * depth;
-        invMass2 = 0.0;
-        massM2 = std::numeric_limits<double>::max();
-    } 
-    else { //inverse mass weighting
-        double displacementM1 = (depth * m2.totalMass) / (m1.totalMass + m2.totalMass);
-        double displacementM2 = (depth * m1.totalMass) / (m1.totalMass + m2.totalMass);
-
-        m1.COM += (-1 * contactNormal) * displacementM1;
-        m2.COM += contactNormal * displacementM2;
-
-        double invMass1 = 1.0 / m1.totalMass;
-        double invMass2 = 1.0 / m2.totalMass;
+        Mesh m(V, F, T, density, isFixed, COM, orientation);
+        meshes.push_back(m);
     }
 
-    // Effective inverse masses (fixed objects are treated as infinite mass)
-    invMass1 = m1.isFixed ? 0.0 : 1.0 / m1.totalMass;
-    invMass2 = m2.isFixed ? 0.0 : 1.0 / m2.totalMass;
-    
-    
-    //Create impulse and push them into m1.impulses and m2.impulses.
-    RowVector3d contactArm1 = contactPosition - m1.COM;
-    RowVector3d contactArm2 = contactPosition - m2.COM;
-    double enumerator = -(1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
-    
-    RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.getCurrInvInertiaTensor();
-    Vector3d termM1Factor2 = contactArm1.cross(contactNormal).transpose();
-    RowVector3d termM2Factor1 = contactArm2.cross(contactNormal) * m2.getCurrInvInertiaTensor();
-    Vector3d termM2Factor2 = contactArm2.cross(contactNormal).transpose();
+    /*********************************************************************
+     This function handles a collision between objects ro1 and ro2 when found, by assigning impulses to both objects.
+     Input: RigidObjects m1, m2
+     depth: the depth of penetration
+     contactNormal: the normal of the contact measured m1->m2
+     penPosition: a point on m2 such that if m2 <= m2 + depth*contactNormal, then penPosition+depth*contactNormal is the common contact point
+     CRCoeff: the coefficient of restitution
+     *********************************************************************/
+    void handleCollision(Mesh& m1, Mesh& m2, const double& depth, const RowVector3d& contactNormal, const RowVector3d& penPosition, double CRCoeff, double kineticFrictionCoefficient) {
+        std::cout << "contactNormal: " << contactNormal << std::endl;
+        std::cout << "penPosition: " << penPosition << std::endl;
+        //std::cout<<"handleCollision begin"<<std::endl;
 
-    // Explicit cross product and coefficient-wise product
-    double termM1 = termM1Factor1 * termM1Factor2;
-    double termM2 = termM2Factor1 * termM2Factor2;
 
-    double denomerator = (invMass1 + invMass2) + termM1 + termM2;
-    double impulseMagnitude = enumerator / denomerator;
+        // Interpretation resolution: move each object by inverse mass weighting, unless either is fixed, and then move the other. 
+        // Remember to respect the direction of contactNormal and update penPosition accordingly.
 
-    RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
+        double invMass1;
+        double invMass2;
+        double massM1;
+        double massM2;
+
+        RowVector3d contactPosition = penPosition + depth * contactNormal;
+        if (m1.isFixed) {
+            m2.COM += contactNormal * depth;
+            invMass1 = 0.0;
+            massM1 = std::numeric_limits<double>::max();
+        }
+        else if (m2.isFixed) {
+            m1.COM += -1 * contactNormal * depth;
+            invMass2 = 0.0;
+            massM2 = std::numeric_limits<double>::max();
+        }
+        else { //inverse mass weighting
+            double displacementM1 = (depth * m2.totalMass) / (m1.totalMass + m2.totalMass);
+            double displacementM2 = (depth * m1.totalMass) / (m1.totalMass + m2.totalMass);
+
+            m1.COM += (-1 * contactNormal) * displacementM1;
+            m2.COM += contactNormal * displacementM2;
+
+            invMass1 = 1.0 / m1.totalMass;
+            invMass2 = 1.0 / m2.totalMass;
+        }
+
+        // Things seem to not work great when using the ealier assignments of invMass1 and invMass2.
+        invMass1 = 1.0 / m1.totalMass;
+        invMass2 = 1.0 / m2.totalMass;
+
+        //Create impulse and push them into m1.impulses and m2.impulses.
+        RowVector3d contactArm1 = contactPosition - m1.COM;
+        RowVector3d contactArm2 = contactPosition - m2.COM;
+        double enumerator = -(1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
+
+        RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.getCurrInvInertiaTensor();
+        Vector3d termM1Factor2 = contactArm1.cross(contactNormal).transpose();
+        RowVector3d termM2Factor1 = contactArm2.cross(contactNormal) * m2.getCurrInvInertiaTensor();
+        Vector3d termM2Factor2 = contactArm2.cross(contactNormal).transpose();
+
+        // Explicit cross product and coefficient-wise product
+        double termM1 = termM1Factor1 * termM1Factor2;
+        double termM2 = termM2Factor1 * termM2Factor2;
+
+        double denomerator = (invMass1 + invMass2) + termM1 + termM2;
+        double impulseMagnitude = enumerator / denomerator;
+
+        RowVector3d impulse = impulseMagnitude * contactNormal;  //change this to your result
+
+        // -------------------------------
+        // Adding friction to the equation
+        // -------------------------------
+        Vector3d velocity1 = m1.comVelocity + m1.angVelocity.cross(contactArm1);
+        Vector3d velocity2 = m2.comVelocity + m2.angVelocity.cross(contactArm2);
+        Vector3d relativeVelocity = velocity2 - velocity1;
+
+        // Calculating the velocity along the contact normal
+        Vector3d relativeVelocityNormal = (relativeVelocity.dot(contactNormal)) * contactNormal;
+
+        Vector3d relativeVelocityTangent = relativeVelocity - relativeVelocityNormal;
+
+        // In case there's no friction impulse
+        RowVector3d frictionImpulse;
+        frictionImpulse.setZero();
+        double frictionImpulseMagnitude = 0.0;
+
+        double relativeVelocityTangentNorm = relativeVelocityTangent.norm();
+        if (relativeVelocityTangentNorm > 1e-6) {
+            Vector3d tHat = relativeVelocityTangent / relativeVelocityTangentNorm;
+            frictionImpulseMagnitude = kineticFrictionCoefficient * impulseMagnitude;
+            frictionImpulse = -frictionImpulseMagnitude * tHat;
+        }
+
+        impulse += frictionImpulse;
     
     std::cout<<"impulse: "<<impulse<<std::endl;
     if (impulse.norm()>1e-6){
@@ -430,11 +465,11 @@ public:
    2. detecting and handling collisions with the coefficient of restitutation CRCoeff
    3. updating the visual scene in fullV and fullT
    *********************************************************************/
-  void updateScene(double timeStep, double CRCoeff){
+  void updateScene(double timeStep, double CRCoeff, double dragCoefficient, double kineticFrictionCoefficient){
     
     //integrating velocity, position and orientation from forces and previous states
     for (int i=0;i<meshes.size();i++)
-      meshes[i].integrate(timeStep);
+      meshes[i].integrate(timeStep, dragCoefficient);
     
     //detecting and handling collisions when found
     //This is done exhaustively: checking every two objects in the scene.
@@ -443,7 +478,7 @@ public:
     for (int i=0;i<meshes.size();i++)
       for (int j=i+1;j<meshes.size();j++)
         if (meshes[i].isCollide(meshes[j],depth, contactNormal, penPosition))
-          handleCollision(meshes[i], meshes[j],depth, contactNormal, penPosition,CRCoeff);
+          handleCollision(meshes[i], meshes[j],depth, contactNormal, penPosition,CRCoeff, kineticFrictionCoefficient);
     
     currTime+=timeStep;
   }
