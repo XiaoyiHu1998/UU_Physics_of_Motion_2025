@@ -15,6 +15,7 @@ bool animationHack;  //fixing the weird camera bug in libigl
 //initial values
 float timeStep = 0.02;
 float CRCoeff= 1.0;
+float dragCoefficient = 0.0;
 
 Scene scene;
 
@@ -143,6 +144,68 @@ class CustomMenu : public igl::opengl::glfw::imgui::ImGuiMenu
       if (ImGui::InputFloat("Time Step", &timeStep)) {
         mgpViewer.core().animation_max_fps = (((int)1.0/timeStep));
       }
+
+      ImGui::InputFloat("dragCoefficient", &dragCoefficient);
+    }
+
+    if (ImGui::CollapsingHeader("Mesh Velocities", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        // Draw Mesh velocities
+        for (int i = 0; i < scene.meshes.size(); i++)
+        {
+            std::string label = "Mesh " + std::to_string(i);
+            ImGui::Text(label.c_str());
+
+            // Velocity Editing
+            float velocityX = static_cast<float>(scene.meshes[i].comVelocity.data()[0]);
+            float velocityY = static_cast<float>(scene.meshes[i].comVelocity.data()[1]);
+            float velocityZ = static_cast<float>(scene.meshes[i].comVelocity.data()[2]);
+            float velocityFloat[3] = {velocityX, velocityY, velocityZ};
+
+            std::string velocityLabel = "M" + std::to_string(i) + " velocity";
+            ImGui::DragFloat3(velocityLabel.c_str(), velocityFloat);
+            scene.meshes[i].comVelocity.data()[0] = static_cast<double>(velocityFloat[0]);
+            scene.meshes[i].comVelocity.data()[1] = static_cast<double>(velocityFloat[1]);
+            scene.meshes[i].comVelocity.data()[2] = static_cast<double>(velocityFloat[2]);
+
+            // Impulse Editing
+            float ImpulsePositionX = static_cast<float>(scene.meshes[i].ExternalImpulsePosition.data()[0]);
+            float ImpulsePositionY = static_cast<float>(scene.meshes[i].ExternalImpulsePosition.data()[1]);
+            float ImpulsePositionZ = static_cast<float>(scene.meshes[i].ExternalImpulsePosition.data()[2]);
+            float ImpulsePositionFloat[3] = { ImpulsePositionX, ImpulsePositionY, ImpulsePositionZ };
+
+            std::string impulsePositionLabel = "M" + std::to_string(i) + " impulsePosition";
+            if (ImGui::DragFloat3(impulsePositionLabel.c_str(), ImpulsePositionFloat))
+            {
+                scene.meshes[i].ExternalImpulsePosition  = RowVector3d(static_cast<double>(ImpulsePositionFloat[0]), static_cast<double>(ImpulsePositionFloat[1]), static_cast<double>(ImpulsePositionFloat[2]));
+            }
+
+            float ImpulseDirectionX = static_cast<float>(scene.meshes[i].ExternalImpulseDirection.data()[0]);
+            float ImpulseDirectionY = static_cast<float>(scene.meshes[i].ExternalImpulseDirection.data()[1]);
+            float ImpulseDirectionZ = static_cast<float>(scene.meshes[i].ExternalImpulseDirection.data()[2]);
+            float ImpulseDirectionFloat[3] = { ImpulseDirectionX, ImpulseDirectionY, ImpulseDirectionZ };
+
+            std::string impulseDirectionLabel = "M" + std::to_string(i) + " impulseDirection";
+            if (ImGui::DragFloat3(impulseDirectionLabel.c_str(), ImpulseDirectionFloat))
+            {
+                scene.meshes[i].ExternalImpulseDirection = RowVector3d(static_cast<double>(ImpulseDirectionFloat[0]), static_cast<double>(ImpulseDirectionFloat[1]), static_cast<double>(ImpulseDirectionFloat[2]));
+            }
+
+            std::string impulseApplyLabel = "M" + std::to_string(i) + " Apply Impulse";
+            if (ImGui::Button(impulseApplyLabel.c_str()))
+            {
+                RowVector3d impulsePosition = scene.meshes[i].ExternalImpulsePosition;
+                RowVector3d impulseDirection = scene.meshes[i].ExternalImpulseDirection;
+
+                scene.meshes[i].currImpulses.push_back(Impulse(impulsePosition, impulseDirection));
+                scene.meshes[i].updateImpulseVelocities();
+
+                scene.meshes[i].ExternalImpulsePosition.setZero();
+                scene.meshes[i].ExternalImpulseDirection.setZero();
+            }
+
+            ImGui::Separator();
+        }
     }
   }
 };
