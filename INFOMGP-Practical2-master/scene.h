@@ -124,9 +124,8 @@ public:
   
   //return the current inverted inertia tensor around the current COM. Update it by applying the orientation
   Matrix3d getCurrInvInertiaTensor(){
-   /********
-    TODO: complete from Practical 1
-    *******/
+      Matrix3d R = Q2RotMatrix(orientation);
+      return R * invIT * R.transpose();
   }
   
   
@@ -136,10 +135,26 @@ public:
     //just forward Euler now
     if (isFixed)
       return;  //a fixed object is immobile
-    
-    /********
-     TODO: complete from Practical 1
-     *******/
+
+    //Update the center of mass position
+    COM += comVelocity * timeStep; //comVelocity is alreadyt updated for t + deltaT, so therefore this is semi-implicit euler time integration
+
+    // Calculate the angle of rotation
+    double theta = angVelocity.norm() * timeStep;
+
+    double scalarComponent = cos(theta / 2.0);
+    RowVector3d vectorComponent = angVelocity.normalized() * sin(theta / 2.0);
+
+    Quaternion<double> orientationQuaternion = Quaternion<double>(orientation[0], orientation[1], orientation[2], orientation[3]);
+    Quaternion<double> rotationQuaternion = Quaternion<double>(AngleAxisd(theta, angVelocity.normalized()));
+
+    // Update the stored orientation
+    //orientationQuaternion = rotationQuaternion * orientationQuaternion * rotationQuaternion.inverse();
+    orientationQuaternion = rotationQuaternion * orientationQuaternion;
+    orientation[0] = orientationQuaternion.w();
+    orientation[1] = orientationQuaternion.x();
+    orientation[2] = orientationQuaternion.y();
+    orientation[3] = orientationQuaternion.z();
     
     for (int i=0;i<currV.rows();i++)
       currV.row(i)<<QRot(origV.row(i), orientation)+COM;
@@ -204,10 +219,10 @@ public:
     
     if (isFixed)
       return;
-    
-    /********
-     TODO: complete from Practical 1
-     *******/
+
+    //integrating external forces (only gravity)
+    Vector3d gravity; gravity << 0, -9.8, 0.0;
+    comVelocity += gravity * timeStep;
   }
   
   
