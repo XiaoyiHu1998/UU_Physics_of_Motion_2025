@@ -145,7 +145,7 @@ public:
       COM += comVelocity * timeStep; //comVelocity is alreadyt updated for t + deltaT, so therefore this is semi-implicit euler time integration
 
       // Calculate the angle of rotation
-      double angle = angVelocity.norm() * timeStep;
+      double theta = angVelocity.norm() * timeStep;
 
       Quaternion<double> orientationQuaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
 
@@ -402,6 +402,8 @@ public:
         //Create impulse and push them into m1.impulses and m2.impulses.
         RowVector3d contactArm1 = contactPosition - m1.COM;
         RowVector3d contactArm2 = contactPosition - m2.COM;
+        std::cout << "contactArm1: " << contactArm1 << std::endl;
+        std::cout << "contactArm2: " << contactArm2 << std::endl;
         double enumerator = -(1.0 + CRCoeff) * (m1.comVelocity - m2.comVelocity).dot(contactNormal);
 
         RowVector3d termM1Factor1 = contactArm1.cross(contactNormal) * m1.getCurrInvInertiaTensor();
