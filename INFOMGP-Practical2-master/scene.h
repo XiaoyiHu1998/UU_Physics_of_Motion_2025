@@ -312,14 +312,14 @@ public:
    You are not allowed to use practical 1 collision handling
    *********************************************************************/
   void handleCollision(Mesh& m1, Mesh& m2,const double& depth, const RowVector3d& contactNormal,const RowVector3d& penPosition, const double CRCoeff, const double tolerance){
-    
-    
+
     //std::cout<<"contactNormal: "<<contactNormal<<std::endl;
     //std::cout<<"penPosition: "<<penPosition<<std::endl;
 
-    
-    double invMass1 = (m1.isFixed ? 0.0 : 1.0/m1.totalMass);  //fixed meshes have infinite mass
-    double invMass2 = (m2.isFixed ? 0.0 : 1.0/m2.totalMass);
+    double invMass1 = (m1.isFixed ? 0.0 : 1.0 / m1.totalMass);  //fixed meshes have infinite mass
+    double invMass2 = (m2.isFixed ? 0.0 : 1.0 / m2.totalMass);
+
+    RowVector3d contactPosition = penPosition + depth * contactNormal;
   
     /***************
      TODO: practical 2
@@ -327,13 +327,26 @@ public:
      ***********************/
 
     // Positions
-    Constraint collisionConstraint = Constraint(ConstraintType::COLLISION, ConstraintEqualityType::INEQUALITY, 0, m1.currV.rows(), 1, m2.currV.rows(), invMass1, invMass2, contactNormal, -depth, CRCoeff);
+    Constraint collisionConstraint = Constraint(ConstraintType::COLLISION, ConstraintEqualityType::INEQUALITY, 0, m1.currV.rows(), 1, m2.currV.rows(), invMass1, invMass2, contactNormal.normalized(), -depth, CRCoeff);
     MatrixXd comPositions = Eigen::MatrixXd::Zero(2, 3);
     comPositions.row(0) << m1.COM[0], m1.COM[1], m1.COM[2];
     comPositions.row(1) << m2.COM[0], m2.COM[1], m2.COM[2];
 
+    RowVectorXd oldPositionM1 = -1.0 * (m1.comVelocity - m1.COM);
+    RowVectorXd oldPositionM2 = -1.0 * (m2.comVelocity - m2.COM);
+
+    MatrixXd currConstPositions = MatrixXd::Zero(3, 3);
+    currConstPositions.block(0, 0, 1, 3) = penPosition;
+    currConstPositions.block(1, 0, 1, 3) = oldPositionM1;
+    currConstPositions.block(2, 0, 1, 3) = oldPositionM2;
+
+    // In case its relative velocity
+    //RowVectorXd relativeVelocity = m2.comVelocity - m1.comVelocity;
+    //RowVectorXd oldPositionM1 = -1.0 * (relativeVelocity - m1.COM);
+    //RowVectorXd oldPositionM2 = -1.0 * (relativeVelocity - m2.COM);
+
     MatrixXd correctedPositions = Eigen::MatrixXd::Zero(2, 3);
-    bool positionsAlreadyCorrect = collisionConstraint.resolvePositionConstraint(comPositions, penPosition, correctedPositions, tolerance);
+    bool positionsAlreadyCorrect = collisionConstraint.resolvePositionConstraint(comPositions, currConstPositions, correctedPositions, tolerance);
     
     if (!positionsAlreadyCorrect)
     {
@@ -347,14 +360,11 @@ public:
         m2.COM[2] = correctedPositions.row(1)[2];
     }
 
-
     // Velocities
-    MatrixXd currVertexPositionsM1 = m1.currV;
-    MatrixXd currVertexPositionsM2 = m2.currV;
+    MatrixXd currVertexPositionsM1 = contactPosition;
 
-    MatrixXd currVertexPositions = MatrixXd::Zero(m1.currV.rows() + m2.currV.rows(), 3);
-    currVertexPositions.block(0, 0, m1.currV.rows(), 3) = currVertexPositionsM1;
-    currVertexPositions.block(m1.currV.rows(), 0, m2.currV.rows(), 3) = currVertexPositionsM2;
+    MatrixXd currVertexPositions = MatrixXd::Zero(1,3);
+    currVertexPositions.block(0, 0, 1, 3) = currVertexPositionsM1;
 
     MatrixXd currComVelocities = MatrixXd::Zero(2, m1.comVelocity.cols());
     currComVelocities.row(0) = m1.comVelocity;
@@ -366,32 +376,26 @@ public:
 
     MatrixXd correctedCOMVelocities = MatrixXd::Zero(2, 3);
     MatrixXd correctedAngularVelocities = MatrixXd::Zero(2, 3);
-
     bool velocitiesAlreadyCorrect = collisionConstraint.resolveVelocityConstraint(correctedPositions, currVertexPositions, currComVelocities, 
                                                 currAngularVelocities, m1.getCurrInvInertiaTensor(), m2.getCurrInvInertiaTensor(),
                                                 correctedCOMVelocities, correctedAngularVelocities, tolerance);
 
-    if (!velocitiesAlreadyCorrect)
-    {
-        // Apply velocity resolving matrices
+    //std::cout << "\n\n\n____________updating velocities_____________" << std::endl;
 
-        std::cout << "\n\n\n____________updating velocities_____________" << std::endl;
+    //std::cout << "correctedCOMVelocity: \n" << correctedCOMVelocities << std::endl;
+    //std::cout << "correctedAngularVelocities: \n" << correctedAngularVelocities << std::endl;
 
-        std::cout << "correctedCOMVelocity: \n" << correctedCOMVelocities << std::endl;
-        std::cout << "correctedAngularVelocities: \n" << correctedAngularVelocities << std::endl;
+    //std::cout << "original m1.comVelocity: " << m1.comVelocity << std::endl;
+    //std::cout << "original m2.comVelocity: " << m2.comVelocity << std::endl;
 
-        std::cout << "original m1.comVelocity: " << m1.comVelocity << std::endl;
-        std::cout << "original m2.comVelocity: " << m2.comVelocity << std::endl;
+    m1.comVelocity = correctedCOMVelocities.row(0);
+    m2.comVelocity = correctedCOMVelocities.row(1);
 
-        m1.comVelocity = 2 * correctedCOMVelocities.row(0);
-        m2.comVelocity = 2 * correctedCOMVelocities.row(1);
+    m1.angVelocity = correctedAngularVelocities.row(0);
+    m2.angVelocity = correctedAngularVelocities.row(1);
 
-        m1.comVelocity = 2 * correctedAngularVelocities.row(0);
-        m2.comVelocity = 2 * correctedAngularVelocities.row(1);
-
-        std::cout << "updated m1.comVelocity: " << m1.comVelocity << std::endl;
-        std::cout << "updated m2.comVelocity: " << m2.comVelocity << std::endl;
-    }
+    //std::cout << "updated m1.comVelocity: " << m1.comVelocity << std::endl;
+    //std::cout << "updated m2.comVelocity: " << m2.comVelocity << std::endl;
     
   }
   
