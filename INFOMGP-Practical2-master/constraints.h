@@ -175,23 +175,6 @@ public:
 
       if (constraintType == ConstraintType::COLLISION) // Needs to be fixed
       {
-          RowVectorXd penPosition = currConstPositions.row(0);
-          RowVectorXd prevPositionM1 = currCOMPositions.row(1);
-          RowVectorXd prevPositionM2 = currCOMPositions.row(2);
-
-          RowVector3d contactPosition = penPosition - refValue * refVector; // refValue = -depth & refVector = contactNormal
-          double currDepth = -refValue;
-          double prevDepth = refValue - (comPositionM1 - prevPositionM1).norm();
-          double prevRefValue = -prevDepth;
-
-          RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
-          RowVectorXd jacobian = RowVectorXd::Zero(6);
-          jacobian.segment(0, 3) =  n;
-          jacobian.segment(3, 3) = -n;
-          jacobian = jacobian.transpose();
-
-          //RowVectorXd displacement = ( - 1.0 * (refValue - prevRefValue) / (jacobian)) * invMassMatrix * jacobian;
-
 		  RowVector3d penVector = -refValue * refVector; // Based on C(p) = (p - q_c) \cdot n_c from the paper/YT lecture.
 
 		  double displacementM1 = (massM2 / (massM1 + massM2));
@@ -214,7 +197,7 @@ public:
 		  }
 
 		  correctedPositionM1 = -displacementM1 * penVector + comPositionM1;
-		  correctedPositionM2 = displacementM1 * penVector + comPositionM2;
+		  correctedPositionM2 = displacementM2 * penVector + comPositionM2;
 	  }
       else
       {
