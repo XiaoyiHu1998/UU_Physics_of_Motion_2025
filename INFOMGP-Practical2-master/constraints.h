@@ -20,12 +20,8 @@ public:
   ConstraintType constraintType;  //The type of the constraint, and will affect the value and the gradient. This SHOULD NOT change after initialization!
   ConstraintEqualityType constraintEqualityType;  //whether the constraint is an equality or an inequality
   
-  Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff):
-      constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), 
-      m1(_m1), v1(_v1), m2(_m2), v2(_v2), 
-      invMass1(_invMass1), invMass2(_invMass2), refValue(_refValue), CRCoeff(_CRCoeff)
-  {
-    refVector=_refVector;
+  Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff) :constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2), refValue(_refValue), CRCoeff(_CRCoeff) {
+      refVector = _refVector;
   }
   
   ~Constraint(){}
@@ -47,7 +43,11 @@ public:
                                  double tolerance)
   {
       if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue > 0)
+      {
+          correctedCOMVelocities = currCOMVelocities;
+          correctedAngularVelocities = currAngularVelocities;
           return true;
+      }
 
     //RowVectorXd constGradient(12);
 
@@ -111,16 +111,16 @@ public:
 
         correctedCOMVelocities.row(1) = COMVelocityM2 + deltaVelocity.segment(6, 3).transpose();
         correctedAngularVelocities.row(1) = currAngularVelocityM2 + deltaVelocity.segment(9, 3).transpose();
-
-        return false;
     }
     else
     {
         // Handle distance constraint velocities
-        return false;
+        correctedCOMVelocities = currCOMVelocities;
+        correctedAngularVelocities = currAngularVelocities;
+        return true;
     }
 
-
+    return false;
     
     /**************
      TODO: write velocity correction procedure:
@@ -135,9 +135,9 @@ public:
      ***************/
     
      //Stub code: remove upon implementation
-     correctedCOMVelocities=currCOMVelocities;
-     correctedAngularVelocities=currAngularVelocities;
-     return true;
+     //correctedCOMVelocities=currCOMVelocities;
+     //correctedAngularVelocities=currAngularVelocities;
+     //return true;
      //end of stub code
   }
   
@@ -149,7 +149,7 @@ public:
                                   double tolerance ) 
   {
       // Constraint is already valid.
-      if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue > 0 || fabs(refValue) <= tolerance) {
+      if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue > 0) {
           correctedCOMPositions = currCOMPositions;
           return true;  
       }
@@ -167,73 +167,49 @@ public:
       invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
       invMassMatrix.block(3, 3, 3, 3) = invMass2 * MatrixXd::Identity(3, 3);
 
-      //// See Topic 6, slides 8 & 9.
-      //VectorXd jacobian = RowVectorXd::Zero(6);
-      //jacobian.segment(0, 3) = (comPositionM1 - comPositionM2) / (comPositionM1 - comPositionM2).norm();
-      //jacobian.segment(3, 3) = -(comPositionM1 - comPositionM2) / (comPositionM1 - comPositionM2).norm();
-      //RowVectorXd jacobianTransposed = jacobian.transpose();
+      correctedCOMPositions = currCOMPositions; // initialize values to prevent crashes on loading constraint scene
 
       if (constraintType == ConstraintType::COLLISION) // Needs to be fixed
       {
           RowVectorXd penPosition = currConstPositions.row(0);
           RowVectorXd contactPosition = currCOMPositions.row(1);
 
-          std::cout << "extract values" << std::endl;
-
           RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
           VectorXd jacobian = VectorXd::Zero(6);
           jacobian.segment(0, 3) =  n.transpose();
           jacobian.segment(3, 3) = -n.transpose();
-          //jacobian = jacobian.transpose();
-          std::cout << "jacobian constructed" << std::endl;
 
           VectorXd deltaPosition = VectorXd::Zero(6);
-          std::cout << "old deltaPosition: " << deltaPosition << std::endl;
-          std::cout << "new deltaPosition: " << (penPosition - contactPosition).transpose() << std::endl;
           deltaPosition.segment(0, 3) = (penPosition - contactPosition).transpose();
           deltaPosition.segment(3, 3) = (penPosition - contactPosition).transpose();
-          std::cout << "deltaPosition constructed" << std::endl;
 
           double lambda = -1.0 * jacobian.dot(deltaPosition) / (jacobian.transpose() * invMassMatrix * jacobian);
-
           VectorXd positionCorrection = invMassMatrix * jacobian.transpose() * lambda;
-
-          //VectorXd positionCorrection = lambda * invMassMatrix * jacobian;
-          std::cout << "positionCorrection constructed" << std::endl;
 
 		  correctedPositionM1 = comPositionM1 + positionCorrection.segment(0, 3).transpose();
 		  correctedPositionM2 = comPositionM2 + positionCorrection.segment(3, 3).transpose();
-          std::cout << "corrected Positions" << std::endl;
 	  }
       else
       {
           RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
+          double currDistance = (currConstPositions.row(0) - currConstPositions.row(1)).norm();
+          double constraintValue = currDistance - refValue;
+
+          if (fabs(constraintValue) <= tolerance)
+          {
+              correctedCOMPositions = currCOMPositions;
+              return true;
+          }
 
           double displacementM1 = -(massM2 / (massM1 + massM2));
           double displacementM2 =  (massM1 / (massM1 + massM2));
 
-          if (invMass1 == 0 && invMass2 == 0)
-          {
-              displacementM1 = 0.0;
-              displacementM2 = 0.0;
-          }
-          else if (invMass1 == 0)
-          {
-              displacementM1 = 0.0;
-              displacementM2 = 1.0;
-          }
-          else if (invMass2 == 0)
-          {
-              displacementM1 = 1.0;
-              displacementM2 = 0.0;
-          }
-
-          correctedPositionM1 = displacementM1 * refValue * n + comPositionM1;
-          correctedPositionM2 = displacementM2 * refValue * n + comPositionM2;
+          correctedPositionM1 = displacementM1 * constraintValue * n + comPositionM1;
+          correctedPositionM2 = displacementM2 * constraintValue * n + comPositionM2;
       }
 
-      correctedCOMPositions.block(0, 0, 1, 3) = correctedPositionM1;
-      correctedCOMPositions.block(1, 0, 1, 3) = correctedPositionM2;
+      correctedCOMPositions.block(0, 0, 1, 3) = correctedPositionM1.segment(0, 3);
+      correctedCOMPositions.block(1, 0, 1, 3) = correctedPositionM2.segment(0, 3);
 
       /**************
        TODO: write position correction procedure:
