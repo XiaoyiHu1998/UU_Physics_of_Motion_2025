@@ -376,6 +376,8 @@ public:
 
     MatrixXd correctedCOMVelocities = MatrixXd::Zero(2, 3);
     MatrixXd correctedAngularVelocities = MatrixXd::Zero(2, 3);
+
+    collisionConstraint = Constraint(ConstraintType::COLLISION, ConstraintEqualityType::EQUALITY, 0, m1.currV.rows(), 1, m2.currV.rows(), invMass1, invMass2, contactNormal.normalized(), -depth, CRCoeff);
     bool velocitiesAlreadyCorrect = collisionConstraint.resolveVelocityConstraint(correctedPositions, currVertexPositions, currComVelocities, 
                                                 currAngularVelocities, m1.getCurrInvInertiaTensor(), m2.getCurrInvInertiaTensor(),
                                                 correctedCOMVelocities, correctedAngularVelocities, tolerance);

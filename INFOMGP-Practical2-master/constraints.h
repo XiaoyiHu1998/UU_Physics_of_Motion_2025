@@ -42,6 +42,10 @@ public:
                                  MatrixXd& correctedAngularVelocities, 
                                  double tolerance)
   {
+    // Set corrected value just in case
+    correctedCOMVelocities = currCOMVelocities;
+    correctedAngularVelocities = currAngularVelocities;
+
     // Get info per mesh out of matrices
     RowVectorXd comPositionM1 = currCOMPositions.row(0);
     RowVectorXd comPositionM2 = currCOMPositions.row(1);
@@ -52,17 +56,20 @@ public:
 
     // Lagrange Multiplier
     RowVectorXd contactPosition = currVertexPositions.row(0);
+    RowVectorXd penPosition = currVertexPositions.row(1);
     RowVector3d contactArmM1 = contactPosition - comPositionM1;
     RowVector3d contactArmM2 = contactPosition - comPositionM2;
 
+    RowVector3d chainNormal = (penPosition - contactPosition);
+    Vector3d referenceVector = constraintType == ConstraintType::COLLISION ? refVector : chainNormal;
+
     // Jacobian
-    // if buggy, fill in per element
-    // If wrong, inverse refVector (contactNormal) direction from m1->m2 to m2->m1
+    // Gradient either along the chain or penetration points depending on the case
     VectorXd jacobian = VectorXd::Zero(12);
-    jacobian.segment(0, 3) = refVector;
-    jacobian.segment(3, 3) = contactArmM1.cross(refVector);
-    jacobian.segment(6, 3) = -refVector;
-    jacobian.segment(9, 3) = -contactArmM2.cross(refVector);
+    jacobian.segment(0, 3) = referenceVector;
+    jacobian.segment(3, 3) = contactArmM1.cross(referenceVector);
+    jacobian.segment(6, 3) = -referenceVector;
+    jacobian.segment(9, 3) = -contactArmM2.cross(referenceVector);
 
     // Velocities
     VectorXd velocityVector = VectorXd::Zero(12);
@@ -71,39 +78,34 @@ public:
     velocityVector.segment(6, 3) = COMVelocityM2;
     velocityVector.segment(9, 3) = currAngularVelocityM2;
 
+    // Check if constraint needs to be applied
     if (constraintEqualityType == ConstraintEqualityType::EQUALITY && fabs(jacobian.dot(velocityVector)) <= tolerance)
     {
         correctedCOMVelocities = currCOMVelocities;
         correctedAngularVelocities = currAngularVelocities;
         return true;
     }
-
-    if (constraintType == ConstraintType::COLLISION)
+    else // Inequality case
     {
-        // Inv Mass Matrix
-        MatrixXd invMassMatrix = MatrixXd::Zero(12, 12);
-        invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
-        invMassMatrix.block(3, 3, 3, 3) = invInertiaTensor1;
-        invMassMatrix.block(6, 6, 3, 3) = invMass2 * MatrixXd::Identity(3, 3);
-        invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
-
-        double enumerator = -(1.0 + CRCoeff) * jacobian.dot(velocityVector);
-        double denominator = jacobian.transpose() * invMassMatrix * jacobian;
-        VectorXd deltaVelocity = (enumerator / denominator) * (invMassMatrix * jacobian);
-
-        correctedCOMVelocities.row(0) = COMVelocityM1 + deltaVelocity.segment(0, 3).transpose();
-        correctedAngularVelocities.row(0) = currAngularVelocityM1 + deltaVelocity.segment(3, 3).transpose();
-
-        correctedCOMVelocities.row(1) = COMVelocityM2 + deltaVelocity.segment(6, 3).transpose();
-        correctedAngularVelocities.row(1) = currAngularVelocityM2 + deltaVelocity.segment(9, 3).transpose();
+        // Does this even exist, Matthijs?
     }
-    else
-    {
-        // Handle distance constraint velocities
-        correctedCOMVelocities = currCOMVelocities;
-        correctedAngularVelocities = currAngularVelocities;
-        return true;
-    }
+
+    // Inv Mass Matrix
+    MatrixXd invMassMatrix = MatrixXd::Zero(12, 12);
+    invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
+    invMassMatrix.block(3, 3, 3, 3) = invInertiaTensor1;
+    invMassMatrix.block(6, 6, 3, 3) = invMass2 * MatrixXd::Identity(3, 3);
+    invMassMatrix.block(9, 9, 3, 3) = invInertiaTensor2;
+
+    double enumerator = -(1.0 + CRCoeff) * jacobian.dot(velocityVector);
+    double denominator = jacobian.transpose() * invMassMatrix * jacobian;
+    VectorXd deltaVelocity = (enumerator / denominator) * (invMassMatrix * jacobian);
+
+    correctedCOMVelocities.row(0) = COMVelocityM1 + deltaVelocity.segment(0, 3).transpose();
+    correctedAngularVelocities.row(0) = currAngularVelocityM1 + deltaVelocity.segment(3, 3).transpose();
+
+    correctedCOMVelocities.row(1) = COMVelocityM2 + deltaVelocity.segment(6, 3).transpose();
+    correctedAngularVelocities.row(1) = currAngularVelocityM2 + deltaVelocity.segment(9, 3).transpose();
 
     return false;
     
