@@ -194,11 +194,15 @@ public:
           deltaPosition.segment(3, 3) = (penPosition - contactPosition).transpose();
           std::cout << "deltaPosition constructed" << std::endl;
 
-          VectorXd positionCorrection = (-1.0 * jacobian.dot(deltaPosition) / (jacobian.transpose() * invMassMatrix * jacobian) * (invMassMatrix * jacobian));
+          double lambda = -1.0 * jacobian.dot(deltaPosition) / (jacobian.transpose() * invMassMatrix * jacobian);
+
+          VectorXd positionCorrection = invMassMatrix * jacobian.transpose() * lambda;
+
+          //VectorXd positionCorrection = lambda * invMassMatrix * jacobian;
           std::cout << "positionCorrection constructed" << std::endl;
 
-		  correctedPositionM1 = comPositionM1 + deltaPosition.segment(0, 3).transpose();
-		  correctedPositionM2 = comPositionM2 + deltaPosition.segment(3, 3).transpose();
+		  correctedPositionM1 = comPositionM1 + positionCorrection.segment(0, 3).transpose();
+		  correctedPositionM2 = comPositionM2 + positionCorrection.segment(3, 3).transpose();
           std::cout << "corrected Positions" << std::endl;
 	  }
       else
