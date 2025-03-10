@@ -337,8 +337,9 @@ public:
 
     MatrixXd currConstPositions = MatrixXd::Zero(3, 3);
     currConstPositions.block(0, 0, 1, 3) = penPosition;
-    currConstPositions.block(1, 0, 1, 3) = oldPositionM1;
-    currConstPositions.block(2, 0, 1, 3) = oldPositionM2;
+    currConstPositions.block(1, 0, 1, 3) = contactPosition;
+    //currConstPositions.block(1, 0, 1, 3) = oldPositionM1;
+    //currConstPositions.block(2, 0, 1, 3) = oldPositionM2;
 
     // In case its relative velocity
     //RowVectorXd relativeVelocity = m2.comVelocity - m1.comVelocity;
@@ -354,17 +355,16 @@ public:
         m1.COM[0] = correctedPositions.row(0)[0];
         m1.COM[1] = correctedPositions.row(0)[1];
         m1.COM[2] = correctedPositions.row(0)[2];
-
+    
         m2.COM[0] = correctedPositions.row(1)[0];
         m2.COM[1] = correctedPositions.row(1)[1];
         m2.COM[2] = correctedPositions.row(1)[2];
     }
 
     // Velocities
-    MatrixXd currVertexPositionsM1 = contactPosition;
-
-    MatrixXd currVertexPositions = MatrixXd::Zero(1,3);
-    currVertexPositions.block(0, 0, 1, 3) = currVertexPositionsM1;
+    MatrixXd currVertexPositions = MatrixXd::Zero(2, 3);
+    currVertexPositions.block(0, 0, 1, 3) = contactPosition;
+    currVertexPositions.block(1, 0, 1, 3) = penPosition;
 
     MatrixXd currComVelocities = MatrixXd::Zero(2, m1.comVelocity.cols());
     currComVelocities.row(0) = m1.comVelocity;

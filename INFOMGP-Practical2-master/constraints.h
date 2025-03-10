@@ -176,45 +176,30 @@ public:
       if (constraintType == ConstraintType::COLLISION) // Needs to be fixed
       {
           RowVectorXd penPosition = currConstPositions.row(0);
-          RowVectorXd prevPositionM1 = currCOMPositions.row(1);
-          RowVectorXd prevPositionM2 = currCOMPositions.row(2);
+          RowVectorXd contactPosition = currCOMPositions.row(1);
 
-          RowVector3d contactPosition = penPosition - refValue * refVector; // refValue = -depth & refVector = contactNormal
-          double currDepth = -refValue;
-          double prevDepth = refValue - (comPositionM1 - prevPositionM1).norm();
-          double prevRefValue = -prevDepth;
+          std::cout << "extract values" << std::endl;
 
           RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
-          RowVectorXd jacobian = RowVectorXd::Zero(6);
-          jacobian.segment(0, 3) =  n;
-          jacobian.segment(3, 3) = -n;
-          jacobian = jacobian.transpose();
+          VectorXd jacobian = VectorXd::Zero(6);
+          jacobian.segment(0, 3) =  n.transpose();
+          jacobian.segment(3, 3) = -n.transpose();
+          //jacobian = jacobian.transpose();
+          std::cout << "jacobian constructed" << std::endl;
 
-          //RowVectorXd displacement = ( - 1.0 * (refValue - prevRefValue) / (jacobian)) * invMassMatrix * jacobian;
+          VectorXd deltaPosition = VectorXd::Zero(6);
+          std::cout << "old deltaPosition: " << deltaPosition << std::endl;
+          std::cout << "new deltaPosition: " << (penPosition - contactPosition).transpose() << std::endl;
+          deltaPosition.segment(0, 3) = (penPosition - contactPosition).transpose();
+          deltaPosition.segment(3, 3) = (penPosition - contactPosition).transpose();
+          std::cout << "deltaPosition constructed" << std::endl;
 
-		  RowVector3d penVector = -refValue * refVector; // Based on C(p) = (p - q_c) \cdot n_c from the paper/YT lecture.
+          VectorXd positionCorrection = (-1.0 * jacobian.dot(deltaPosition) / (jacobian.transpose() * invMassMatrix * jacobian) * (invMassMatrix * jacobian));
+          std::cout << "positionCorrection constructed" << std::endl;
 
-		  double displacementM1 = (massM2 / (massM1 + massM2));
-		  double displacementM2 = (massM1 / (massM1 + massM2));
-
-		  if (invMass1 == 0 && invMass2 == 0)
-		  {
-			  displacementM1 = 0.0;
-			  displacementM2 = 0.0;
-		  }
-		  else if (invMass1 == 0)
-		  {
-			  displacementM1 = 0.0;
-			  displacementM2 = 1.0;
-		  }
-		  else if (invMass2 == 0)
-		  {
-			  displacementM1 = 1.0;
-			  displacementM2 = 0.0;
-		  }
-
-		  correctedPositionM1 = -displacementM1 * penVector + comPositionM1;
-		  correctedPositionM2 = displacementM1 * penVector + comPositionM2;
+		  correctedPositionM1 = comPositionM1 + deltaPosition.segment(0, 3).transpose();
+		  correctedPositionM2 = comPositionM2 + deltaPosition.segment(3, 3).transpose();
+          std::cout << "corrected Positions" << std::endl;
 	  }
       else
       {
