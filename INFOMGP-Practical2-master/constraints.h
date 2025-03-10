@@ -42,59 +42,44 @@ public:
                                  MatrixXd& correctedAngularVelocities, 
                                  double tolerance)
   {
-      if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue > 0)
-      {
-          correctedCOMVelocities = currCOMVelocities;
-          correctedAngularVelocities = currAngularVelocities;
-          return true;
-      }
-
-    //RowVectorXd constGradient(12);
-
     // Get info per mesh out of matrices
     RowVectorXd comPositionM1 = currCOMPositions.row(0);
     RowVectorXd comPositionM2 = currCOMPositions.row(1);
-
-    RowVectorXd contactPosition = currVertexPositions.row(0);
-    //RowVectorXd contactArmM2 = currVertexPositions.row(1);
-
     RowVectorXd COMVelocityM1 = currCOMVelocities.row(0);
     RowVectorXd COMVelocityM2 = currCOMVelocities.row(1);
-
     RowVectorXd currAngularVelocityM1 = currAngularVelocities.row(0);
     RowVectorXd currAngularVelocityM2 = currAngularVelocities.row(1);
 
+    // Lagrange Multiplier
+    RowVectorXd contactPosition = currVertexPositions.row(0);
+    RowVector3d contactArmM1 = contactPosition - comPositionM1;
+    RowVector3d contactArmM2 = contactPosition - comPositionM2;
+
+    // Jacobian
+    // if buggy, fill in per element
+    // If wrong, inverse refVector (contactNormal) direction from m1->m2 to m2->m1
+    VectorXd jacobian = VectorXd::Zero(12);
+    jacobian.segment(0, 3) = refVector;
+    jacobian.segment(3, 3) = contactArmM1.cross(refVector);
+    jacobian.segment(6, 3) = -refVector;
+    jacobian.segment(9, 3) = -contactArmM2.cross(refVector);
+
+    // Velocities
+    VectorXd velocityVector = VectorXd::Zero(12);
+    velocityVector.segment(0, 3) = COMVelocityM1;
+    velocityVector.segment(3, 3) = currAngularVelocityM1;
+    velocityVector.segment(6, 3) = COMVelocityM2;
+    velocityVector.segment(9, 3) = currAngularVelocityM2;
+
+    if (constraintEqualityType == ConstraintEqualityType::EQUALITY && fabs(jacobian.dot(velocityVector)) <= tolerance)
+    {
+        correctedCOMVelocities = currCOMVelocities;
+        correctedAngularVelocities = currAngularVelocities;
+        return true;
+    }
+
     if (constraintType == ConstraintType::COLLISION)
     {
-        // Lagrange Multiplier
-        RowVector3d contactArmM1 = contactPosition - comPositionM1;
-        RowVector3d contactArmM2 = contactPosition - comPositionM2;
-
-        // Jacobian
-        // if buggy, fill in per element
-        // If wrong, inverse refVector (contactNormal) direction from m1->m2 to m2->m1
-        VectorXd jacobian = VectorXd::Zero(12);
-        jacobian.segment(0, 3) = refVector;
-        jacobian.segment(3, 3) = contactArmM1.cross(refVector);
-        jacobian.segment(6, 3) = -refVector;
-        jacobian.segment(9, 3) = -contactArmM2.cross(refVector);
-
-        // Velocities
-        VectorXd velocityVector = VectorXd::Zero(12);
-        velocityVector.segment(0, 3) = COMVelocityM1;
-        velocityVector.segment(3, 3) = currAngularVelocityM1;
-        velocityVector.segment(6, 3) = COMVelocityM2;
-        velocityVector.segment(9, 3) = currAngularVelocityM2;
-
-        // Stop if under tolerance
-        double distance = fabs(jacobian.dot(velocityVector));
-        if (distance <= tolerance)
-        {
-            correctedCOMVelocities = currCOMVelocities;
-            correctedAngularVelocities = currAngularVelocities;
-            return true;
-        }
-
         // Inv Mass Matrix
         MatrixXd invMassMatrix = MatrixXd::Zero(12, 12);
         invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
@@ -148,18 +133,20 @@ public:
                                   MatrixXd& correctedCOMPositions,
                                   double tolerance ) 
   {
-      // Constraint is already valid.
-      if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue > 0) {
+      // Inequality Case if constraint is already valid.
+      if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue >= 0) { // Check if refValue = -depth affects this check
           correctedCOMPositions = currCOMPositions;
           return true;  
       }
 
+      // Set positions
       RowVectorXd comPositionM1 = currCOMPositions.row(0);
       RowVectorXd comPositionM2 = currCOMPositions.row(1);
+      RowVectorXd correctedPositionM1 = comPositionM1;
+      RowVectorXd correctedPositionM2 = comPositionM2;
+      correctedCOMPositions = currCOMPositions; // initialize values to prevent crashes on loading constraint scene
 
-      RowVectorXd correctedPositionM1 = RowVectorXd::Zero(3);
-      RowVectorXd correctedPositionM2 = RowVectorXd::Zero(3);
-
+      // Inverse Mass Matrix
       double massM1 = 1.0 / invMass1;
       double massM2 = 1.0 / invMass2;
 
@@ -167,14 +154,12 @@ public:
       invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
       invMassMatrix.block(3, 3, 3, 3) = invMass2 * MatrixXd::Identity(3, 3);
 
-      correctedCOMPositions = currCOMPositions; // initialize values to prevent crashes on loading constraint scene
-
       if (constraintType == ConstraintType::COLLISION) // Needs to be fixed
       {
           RowVectorXd penPosition = currConstPositions.row(0);
-          RowVectorXd contactPosition = currCOMPositions.row(1);
+          RowVectorXd contactPosition = currConstPositions.row(1);
 
-          RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
+          RowVectorXd n = (penPosition - contactPosition).normalized();
           VectorXd jacobian = VectorXd::Zero(6);
           jacobian.segment(0, 3) =  n.transpose();
           jacobian.segment(3, 3) = -n.transpose();
@@ -189,17 +174,16 @@ public:
 		  correctedPositionM1 = comPositionM1 + positionCorrection.segment(0, 3).transpose();
 		  correctedPositionM2 = comPositionM2 + positionCorrection.segment(3, 3).transpose();
 	  }
-      else
+      else // constraintType != ConstraintType::COLLISION
       {
-          RowVectorXd n = (comPositionM1 - comPositionM2).normalized();
+          // currConstPositions should be penetration points in distance constraints
           double currDistance = (currConstPositions.row(0) - currConstPositions.row(1)).norm();
           double constraintValue = currDistance - refValue;
 
-          if (fabs(constraintValue) <= tolerance)
-          {
-              correctedCOMPositions = currCOMPositions;
+          if (fabs(constraintValue) <= tolerance) // correctedPositions already set to currCOMPositions before if block
               return true;
-          }
+
+          RowVectorXd n = (currConstPositions.row(0) - currConstPositions.row(1)).normalized();
 
           double displacementM1 = -(massM2 / (massM1 + massM2));
           double displacementM2 =  (massM1 / (massM1 + massM2));
@@ -210,6 +194,7 @@ public:
 
       correctedCOMPositions.block(0, 0, 1, 3) = correctedPositionM1.segment(0, 3);
       correctedCOMPositions.block(1, 0, 1, 3) = correctedPositionM2.segment(0, 3);
+      return false;
 
       /**************
        TODO: write position correction procedure:
@@ -219,8 +204,6 @@ public:
 
        Note to differentiate between different constraint types; for inequality constraints you don't do anything unless it's unsatisfied.
        ***************/
-
-      return false;
   }
 };
 
