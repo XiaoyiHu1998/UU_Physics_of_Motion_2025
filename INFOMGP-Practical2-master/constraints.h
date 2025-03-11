@@ -156,8 +156,8 @@ public:
 
       if (constraintType == ConstraintType::COLLISION) // Based on topic 6 slides
       {
-          RowVectorXd penPosition = currConstPositions.row(0);
-          RowVectorXd contactPosition = currConstPositions.row(1);
+          RowVectorXd contactPosition = currConstPositions.row(0);
+          RowVectorXd penPosition = currConstPositions.row(1);
 
           RowVectorXd n = (penPosition - contactPosition).normalized();
           VectorXd jacobian = VectorXd::Zero(6);
