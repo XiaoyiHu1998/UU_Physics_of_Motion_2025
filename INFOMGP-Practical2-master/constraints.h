@@ -120,12 +120,6 @@ public:
      Own notes:
      express FC as FC = J * lambda
      ***************/
-    
-     //Stub code: remove upon implementation
-     //correctedCOMVelocities=currCOMVelocities;
-     //correctedAngularVelocities=currAngularVelocities;
-     //return true;
-     //end of stub code
   }
   
   //projects the position unto the constraint
@@ -135,6 +129,9 @@ public:
                                   MatrixXd& correctedCOMPositions,
                                   double tolerance ) 
   {
+      if (constraintType == ConstraintType::DISTANCE)
+          tolerance = refValue * 0.2;
+
       // Inequality Case if constraint is already valid.
       if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue >= 0) { // Check if refValue = -depth affects this check
           correctedCOMPositions = currCOMPositions;
@@ -176,11 +173,12 @@ public:
 		  correctedPositionM1 = comPositionM1 + positionCorrection.segment(0, 3).transpose();
 		  correctedPositionM2 = comPositionM2 + positionCorrection.segment(3, 3).transpose();
 	  }
-      else // constraintType != ConstraintType::COLLISION
+      else // constraintType != ConstraintType::COLLISION -> Distance Constraints
       {
           // currConstPositions should be penetration points in distance constraints
           double currDistance = (currConstPositions.row(0) - currConstPositions.row(1)).norm();
           double constraintValue = currDistance - refValue;
+          constraintValue = constraintValue < 0 ? constraintValue + 0.2 * refValue : constraintValue - 0.2 * refValue;
 
           if (fabs(constraintValue) <= tolerance) // correctedPositions already set to currCOMPositions before if block
               return true;
