@@ -153,7 +153,7 @@ public:
       invMassMatrix.block(0, 0, 3, 3) = invMass1 * MatrixXd::Identity(3, 3);
       invMassMatrix.block(3, 3, 3, 3) = invMass2 * MatrixXd::Identity(3, 3);
 
-      if (constraintType == ConstraintType::COLLISION) // Needs to be fixed
+      if (constraintType == ConstraintType::COLLISION) // Based on topic 6 slides
       {
           RowVectorXd penPosition = currConstPositions.row(0);
           RowVectorXd contactPosition = currConstPositions.row(1);
@@ -173,6 +173,32 @@ public:
 		  correctedPositionM1 = comPositionM1 + positionCorrection.segment(0, 3).transpose();
 		  correctedPositionM2 = comPositionM2 + positionCorrection.segment(3, 3).transpose();
 	  }
+      //if (constraintType == ConstraintType::COLLISION) // Works better, based on video presentation provided in topic 6 lecture.
+      //{
+      //    RowVector3d penVector = -refValue * refVector; // Based on C(p) = (p - q_c) \cdot n_c from the paper/YT lecture.
+
+      //    double displacementM1 = (massM2 / (massM1 + massM2));
+      //    double displacementM2 = (massM1 / (massM1 + massM2));
+
+      //    if (invMass1 == 0 && invMass2 == 0)
+      //    {
+      //        displacementM1 = 0.0;
+      //        displacementM2 = 0.0;
+      //    }
+      //    else if (invMass1 == 0)
+      //    {
+      //        displacementM1 = 0.0;
+      //        displacementM2 = 1.0;
+      //    }
+      //    else if (invMass2 == 0)
+      //    {
+      //        displacementM1 = 1.0;
+      //        displacementM2 = 0.0;
+      //    }
+
+      //    correctedPositionM1 = -displacementM1 * penVector + comPositionM1;
+      //    correctedPositionM2 = displacementM2 * penVector + comPositionM2;
+      //}
       else // constraintType != ConstraintType::COLLISION -> Distance Constraints
       {
           // currConstPositions should be penetration points in distance constraints
