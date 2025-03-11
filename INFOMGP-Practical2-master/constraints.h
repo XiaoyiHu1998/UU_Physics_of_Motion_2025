@@ -19,8 +19,9 @@ public:
   double CRCoeff;                 //extra velocity bias
   ConstraintType constraintType;  //The type of the constraint, and will affect the value and the gradient. This SHOULD NOT change after initialization!
   ConstraintEqualityType constraintEqualityType;  //whether the constraint is an equality or an inequality
+  double constraintFlexibility;   //The amount of flexibility afforded to the distance constraints on either side (compression, stretch)
   
-  Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff) :constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2), refValue(_refValue), CRCoeff(_CRCoeff) {
+  Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const int& _m1, const int& _v1, const int& _m2, const int& _v2, const double& _invMass1, const double& _invMass2, const RowVector3d& _refVector, const double& _refValue, const double& _CRCoeff, double constraintFlexibility = 0.2) :constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), m1(_m1), v1(_v1), m2(_m2), v2(_v2), invMass1(_invMass1), invMass2(_invMass2), refValue(_refValue), CRCoeff(_CRCoeff), constraintFlexibility(constraintFlexibility){
       refVector = _refVector;
   }
   
@@ -129,7 +130,6 @@ public:
                                   MatrixXd& correctedCOMPositions,
                                   double tolerance ) 
   {
-      double constraintFlexibility = 0.2;
       if (constraintType == ConstraintType::DISTANCE)
           tolerance = refValue * constraintFlexibility;
 
