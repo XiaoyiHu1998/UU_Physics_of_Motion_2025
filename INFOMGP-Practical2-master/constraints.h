@@ -129,8 +129,9 @@ public:
                                   MatrixXd& correctedCOMPositions,
                                   double tolerance ) 
   {
+      double constraintFlexibility = 0.2;
       if (constraintType == ConstraintType::DISTANCE)
-          tolerance = refValue * 0.2;
+          tolerance = refValue * constraintFlexibility;
 
       // Inequality Case if constraint is already valid.
       if (constraintEqualityType == ConstraintEqualityType::INEQUALITY && refValue >= 0) { // Check if refValue = -depth affects this check
@@ -204,7 +205,7 @@ public:
           // currConstPositions should be penetration points in distance constraints
           double currDistance = (currConstPositions.row(0) - currConstPositions.row(1)).norm();
           double constraintValue = currDistance - refValue;
-          constraintValue = constraintValue < 0 ? constraintValue + 0.2 * refValue : constraintValue - 0.2 * refValue;
+          constraintValue = constraintValue < 0 ? constraintValue + constraintFlexibility * refValue : constraintValue - constraintFlexibility * refValue;
 
           if (fabs(constraintValue) <= tolerance) // correctedPositions already set to currCOMPositions before if block
               return true;
