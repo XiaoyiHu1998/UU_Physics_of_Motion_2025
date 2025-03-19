@@ -293,6 +293,18 @@ public:
 		stiffnessTensor.block(0, 0, 3, 3) = topLeftCorner;
 		stiffnessTensor.block(3, 3, 3, 3) = bottomRightCorner;
 
+		// Constructing the mass matrix M
+		std::vector<Triplet<double>> massTriplets;
+		massTriplets.reserve(currPositions.size() * 3);
+		for (int i = 0; i < currPositions.size(); i++)
+		{
+			for (int j = 0; j < 3; j++) {
+				int index = 3 * i + j;
+				massTriplets.push_back(Triplet<double>(index, index, 1.0 / invMasses[i]));
+			}
+		}
+		M.setFromTriplets(massTriplets.begin(), massTriplets.end());
+
 		D = _alpha * M + _beta * K;
 		A = M + D * timeStep + K * (timeStep * timeStep);
 
