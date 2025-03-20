@@ -270,6 +270,60 @@ public:
 	}
 
 
+	/*Matrix3d GetGradientMatrix(int index1, int index2, int index3)
+	{
+		Matrix3d gradientMatrix = Matrix3d::Zero();
+		Vector3d vertex1 = Vector3d(currPositions[index1 + 0], currPositions[index1 + 1], currPositions[index1 + 2]);
+		Vector3d vertex2 = Vector3d(currPositions[index2 + 0], currPositions[index2 + 1], currPositions[index2 + 2]);
+		Vector3d vertex3 = Vector3d(currPositions[index3 + 0], currPositions[index3 + 1], currPositions[index3 + 2]);
+
+		double triangleArea = 0.5 * (vertex2 - vertex1).cross(vertex3 - vertex1).norm();
+
+		Vector3d n = (vertex2 - vertex1).cross(vertex3 - vertex1);
+		Vector3d e23 = (1.0 / 2 * triangleArea) * (vertex3 - vertex2).cross(n);
+		Vector3d e31 = (1.0 / 2 * triangleArea) * (vertex3 - vertex1).cross(n);
+		Vector3d e12 = (1.0 / 2 * triangleArea) * (vertex1 - vertex2).cross(n);
+
+		gradientMatrix.block(0, 0, 3, 1) = e23;
+		gradientMatrix.block(0, 1, 3, 1) = e31;
+		gradientMatrix.block(0, 2, 3, 1) = e12;
+
+		return gradientMatrix;
+	}*/
+
+
+	Matrix3d getBarycentricGradient(int index1, int index2, int index3, int index4)
+	{
+		RowVector3d vertex1 = RowVector3d(currPositions[index1 + 0], currPositions[index1 + 1], currPositions[index1 + 2]);
+		RowVector3d vertex2 = RowVector3d(currPositions[index2 + 0], currPositions[index2 + 1], currPositions[index2 + 2]);
+		RowVector3d vertex3 = RowVector3d(currPositions[index3 + 0], currPositions[index3 + 1], currPositions[index3 + 2]);
+		RowVector3d vertex4 = RowVector3d(currPositions[index4 + 0], currPositions[index4 + 1], currPositions[index4 + 2]);
+
+		MatrixXd Pe = MatrixXd::Zero(4,4);
+		Pe.block(0, 0, 4, 1) = MatrixXd(1.0, 1.0, 1.0, 1.0);
+		Pe.block(0, 1, 1, 3) = vertex1;
+		Pe.block(0, 2, 1, 3) = vertex2;
+		Pe.block(0, 3, 1, 3) = vertex3;
+		Pe.block(0, 4, 1, 3) = vertex4;
+
+		MatrixXd almostIdentityMatrix = MatrixXd::Zero(3, 4);
+		almostIdentityMatrix.block(0, 1, 3, 3) = MatrixXd::Zero(3, 3);
+
+		return almostIdentityMatrix * Pe.inverse();
+	}
+
+	MatrixXd createDJ_d()
+	{
+		MatrixXd DJ_d = MatrixXd(6, 9);
+		DJ_d << 1, 0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 1, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0, 1,
+				0, 0.5, 0, 0.5, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0.5, 0, 0.5, 0,
+				0, 0, 0.5, 0, 0, 0, 0.5, 0, 0;
+
+		return DJ_d;
+	}
 
 	void createGlobalMatrices(const double timeStep, const double _alpha, const double _beta)
 	{
@@ -277,9 +331,19 @@ public:
 		/*************************TODO: create the M, D, K matrices from alpha, beta, poisson ratio, and Young's modulus as learnt in class. Afterward create the matrix "A" with the given timeStep that is the left hand side of the entire system.
 		 *********/
 
-		// M is mass matrix
-		// D is damping matrix
+		// M is mass matrix - Done!
+		// D is damping matrix - Done!
 		// K is stiffness matrix
+
+		std::cout << "T: " << T.rows() << std::endl;
+		std::cout << "V: " << currPositions.size() / 3 << std::endl;
+		std::cout << "F: " << F.rows() << std::endl;
+		std::cout << "invMasses V: " << invMasses.rows() << std::endl;
+
+		VectorXd deformationFields = currPositions - origPositions;
+
+
+		MatrixXd DJ_d = createDJ_d();
 
 		double mu = youngModulus / (2 * (1 + poissonRatio));
 		double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
@@ -295,8 +359,8 @@ public:
 
 		// Constructing the mass matrix M
 		std::vector<Triplet<double>> massTriplets;
-		massTriplets.reserve(currPositions.size() * 3);
-		for (int i = 0; i < currPositions.size(); i++)
+		massTriplets.reserve(invMasses.size() * 3);
+		for (int i = 0; i < invMasses.size(); i++)
 		{
 			for (int j = 0; j < 3; j++) {
 				int index = 3 * i + j;
