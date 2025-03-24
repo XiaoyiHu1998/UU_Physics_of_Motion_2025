@@ -47,6 +47,8 @@ public:
 
 	SparseMatrix<double> A, K, M, D;   //The soft-body matrices
 
+	MatrixXd DJ_d, stiffnessTensorC; //Save constant vectors in mesh for assignment, self added.
+
 	SimplicialLLT<SparseMatrix<double>>* ASolver;   //the solver for the left-hand side matrix constructed for FEM
 
 	~Mesh() { if (ASolver != NULL) delete ASolver; }
@@ -270,29 +272,7 @@ public:
 	}
 
 
-	/*Matrix3d GetGradientMatrix(int index1, int index2, int index3)
-	{
-		Matrix3d gradientMatrix = Matrix3d::Zero();
-		Vector3d vertex1 = Vector3d(currPositions[index1 + 0], currPositions[index1 + 1], currPositions[index1 + 2]);
-		Vector3d vertex2 = Vector3d(currPositions[index2 + 0], currPositions[index2 + 1], currPositions[index2 + 2]);
-		Vector3d vertex3 = Vector3d(currPositions[index3 + 0], currPositions[index3 + 1], currPositions[index3 + 2]);
-
-		double triangleArea = 0.5 * (vertex2 - vertex1).cross(vertex3 - vertex1).norm();
-
-		Vector3d n = (vertex2 - vertex1).cross(vertex3 - vertex1);
-		Vector3d e23 = (1.0 / 2 * triangleArea) * (vertex3 - vertex2).cross(n);
-		Vector3d e31 = (1.0 / 2 * triangleArea) * (vertex3 - vertex1).cross(n);
-		Vector3d e12 = (1.0 / 2 * triangleArea) * (vertex1 - vertex2).cross(n);
-
-		gradientMatrix.block(0, 0, 3, 1) = e23;
-		gradientMatrix.block(0, 1, 3, 1) = e31;
-		gradientMatrix.block(0, 2, 3, 1) = e12;
-
-		return gradientMatrix;
-	}*/
-
-
-	Matrix3d getBarycentricGradient(int index1, int index2, int index3, int index4)
+	MatrixXd getBarycentricGradient(int index1, int index2, int index3, int index4)
 	{
 		RowVector3d vertex1 = RowVector3d(currPositions[index1 + 0], currPositions[index1 + 1], currPositions[index1 + 2]);
 		RowVector3d vertex2 = RowVector3d(currPositions[index2 + 0], currPositions[index2 + 1], currPositions[index2 + 2]);
@@ -300,11 +280,11 @@ public:
 		RowVector3d vertex4 = RowVector3d(currPositions[index4 + 0], currPositions[index4 + 1], currPositions[index4 + 2]);
 
 		MatrixXd Pe = MatrixXd::Zero(4,4);
-		Pe.block(0, 0, 4, 1) = MatrixXd(1.0, 1.0, 1.0, 1.0);
+		Pe.block(0, 0, 4, 1) = Vector4d(1.0, 1.0, 1.0, 1.0);
 		Pe.block(0, 1, 1, 3) = vertex1;
-		Pe.block(0, 2, 1, 3) = vertex2;
-		Pe.block(0, 3, 1, 3) = vertex3;
-		Pe.block(0, 4, 1, 3) = vertex4;
+		Pe.block(1, 1, 1, 3) = vertex2;
+		Pe.block(2, 1, 1, 3) = vertex3;
+		Pe.block(3, 1, 1, 3) = vertex4;
 
 		MatrixXd almostIdentityMatrix = MatrixXd::Zero(3, 4);
 		almostIdentityMatrix.block(0, 1, 3, 3) = MatrixXd::Zero(3, 3);
@@ -312,9 +292,9 @@ public:
 		return almostIdentityMatrix * Pe.inverse();
 	}
 
-	MatrixXd createDJ_d()
+	MatrixXd setDJ_d()
 	{
-		MatrixXd DJ_d = MatrixXd(6, 9);
+		DJ_d = MatrixXd(6, 9);
 		DJ_d << 1, 0, 0, 0, 0, 0, 0, 0, 0,
 				0, 0, 0, 0, 1, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0, 1,
@@ -333,31 +313,40 @@ public:
 
 		// M is mass matrix - Done!
 		// D is damping matrix - Done!
-		// K is stiffness matrix
+		// K is stiffness matrix - Done! (needs testing!)
 
-		std::cout << "T: " << T.rows() << std::endl;
-		std::cout << "V: " << currPositions.size() / 3 << std::endl;
-		std::cout << "F: " << F.rows() << std::endl;
-		std::cout << "invMasses V: " << invMasses.rows() << std::endl;
-
-		VectorXd deformationFields = currPositions - origPositions;
-
-
-		MatrixXd DJ_d = createDJ_d();
-
+		// Set constant matrices DJ_d and C
+		setDJ_d();
 		double mu = youngModulus / (2 * (1 + poissonRatio));
 		double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
 
 		MatrixXd bottomRightCorner = mu * MatrixXd::Identity(3, 3);
 		MatrixXd topLeftCorner = MatrixXd(3, 3);
 		topLeftCorner.fill(lambda);
-		topLeftCorner += 2* mu * MatrixXd::Identity(3, 3);
+		topLeftCorner += 2 * mu * MatrixXd::Identity(3, 3);
 
-		MatrixXd stiffnessTensor = MatrixXd(6, 6);
-		stiffnessTensor.block(0, 0, 3, 3) = topLeftCorner;
-		stiffnessTensor.block(3, 3, 3, 3) = bottomRightCorner;
+		stiffnessTensorC = MatrixXd(6, 6);
+		stiffnessTensorC.block(0, 0, 3, 3) = topLeftCorner;
+		stiffnessTensorC.block(3, 3, 3, 3) = bottomRightCorner;
 
-		// Constructing the mass matrix M
+		// Create Global K from local K's
+		K = SparseMatrix<double>();
+		std::vector<Triplet<double>> kTriplets = std::vector<Triplet<double>>();
+		kTriplets.reserve(T.rows() * 12 * 12);
+		for (int i = 0; i < T.rows(); i++)
+		{
+			MatrixXd tetGradient = getBarycentricGradient(T.coeff(i, 0), T.coeff(i, 1), T.coeff(i, 2), T.coeff(i, 3));
+			MatrixXd localB = DJ_d * tetGradient;
+			MatrixXd localK = localB.transpose() * stiffnessTensorC * localB;
+			VectorXd flattenedLocalK = Map<VectorXd>(localK.data(), localK.size());
+			for (int i = 0; i < flattenedLocalK.size(); i++)
+			{
+				kTriplets.emplace_back(i / 12, i % 12, flattenedLocalK[i]);
+			}
+		}
+		K.setFromTriplets(kTriplets.begin(), kTriplets.end());
+
+		// Constructing the global mass matrix M
 		std::vector<Triplet<double>> massTriplets;
 		massTriplets.reserve(invMasses.size() * 3);
 		for (int i = 0; i < invMasses.size(); i++)
@@ -377,7 +366,6 @@ public:
 			ASolver = new SimplicialLLT<SparseMatrix<double>>();
 		ASolver->analyzePattern(A);
 		ASolver->factorize(A);
-
 	}
 
 	//returns center of mass
@@ -418,6 +406,15 @@ public:
 		/****************TODO: construct rhs (right-hand side) and use ASolver->solve(rhs) to solve for velocities********/
 
 		VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
+
+		//auto y = ASolver->matrixU() * currVelocities;
+		//auto rhs = ASolver->matrixL() * y;
+
+		//std::cout << "matrixU rows: " << ASolver->matrixU().rows() << ", cols: " << ASolver->matrixU().cols() << std::endl;
+		//std::cout << "matrixL rows: " << ASolver->matrixL().rows() << ", cols: " << ASolver->matrixL().cols() << std::endl;
+		//std::cout << "rhs rows: " << rhs.rows() << ", cols: " << rhs.cols() << std::endl;
+		//std::cout << "currVelocity length: " << currVelocities.size() << std::endl;
+
 		currVelocities = ASolver->solve(rhs);
 	}
 
