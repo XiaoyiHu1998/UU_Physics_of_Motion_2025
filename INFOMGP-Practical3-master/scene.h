@@ -48,6 +48,9 @@ public:
 
 	SparseMatrix<double> A, K, M, D;   //The soft-body matrices
 
+	VectorXd gVector;
+	VectorXd gravityForce;
+
 	MatrixXd DJ_d, stiffnessTensorC; //Save constant vectors in mesh for assignment, self added.
 
 	SimplicialLLT<SparseMatrix<double>>* ASolver;   //the solver for the left-hand side matrix constructed for FEM
@@ -408,25 +411,43 @@ public:
 				int vertex2Index = T.coeff(i, 2);
 				int vertex3Index = T.coeff(i, 3);
 
-				// V1
+				//// V1
+				//QTriplets.emplace_back(i * 12 + 0 + 0, vertex0Index * 3 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 0 + 1, vertex0Index * 3 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 0 + 2, vertex0Index * 3 + 2, 1);
+
+				//// V2
+				//QTriplets.emplace_back(i * 12 + 3 + 0, vertex1Index * 3 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 3 + 1, vertex1Index * 3 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 3 + 2, vertex1Index * 3 + 2, 1);
+
+				//// V3
+				//QTriplets.emplace_back(i * 12 + 6 + 0, vertex2Index * 3 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 6 + 1, vertex2Index * 3 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 6 + 2, vertex2Index * 3 + 2, 1);
+
+				//// V4
+				//QTriplets.emplace_back(i * 12 + 9 + 0, vertex3Index * 3 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 9 + 1, vertex3Index * 3 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 9 + 2, vertex3Index * 3 + 2, 1);
+
+				// X Components
 				QTriplets.emplace_back(i * 12 + 0 + 0, vertex0Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 0 + 1, vertex0Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 0 + 2, vertex0Index * 3 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 0 + 1, vertex1Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 0 + 2, vertex2Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 0 + 3, vertex3Index * 3 + 0, 1);
 
-				// V2
-				QTriplets.emplace_back(i * 12 + 3 + 0, vertex1Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 3 + 1, vertex1Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 3 + 2, vertex1Index * 3 + 2, 1);
+				// Y Components
+				QTriplets.emplace_back(i * 12 + 4 + 0, vertex0Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 4 + 1, vertex1Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 4 + 2, vertex2Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 4 + 3, vertex3Index * 3 + 1, 1);
 
-				// V3
-				QTriplets.emplace_back(i * 12 + 6 + 0, vertex2Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 6 + 1, vertex2Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 6 + 2, vertex2Index * 3 + 2, 1);
-
-				// V4
-				QTriplets.emplace_back(i * 12 + 9 + 0, vertex3Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 9 + 1, vertex3Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 9 + 2, vertex3Index * 3 + 2, 1);
+				// Z Components
+				QTriplets.emplace_back(i * 12 + 8 + 0, vertex0Index * 3 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 8 + 1, vertex1Index * 3 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 8 + 2, vertex2Index * 3 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 8 + 3, vertex3Index * 3 + 2, 1);
 			}
 			Q.setFromTriplets(QTriplets.begin(), QTriplets.end());
 			printShape("Q Filled", Q);
@@ -463,6 +484,13 @@ public:
 			ASolver = new SimplicialLLT<SparseMatrix<double>>();
 		ASolver->analyzePattern(A);
 		ASolver->factorize(A);
+
+
+		gVector = VectorXd::Zero(currVelocities.size());
+		for (int i = 1; i < currVelocities.size(); i += 3) {
+			gVector[i] = -9.81;
+		}
+		gravityForce = M * gVector;
 	}
 
 	//returns center of mass
@@ -500,14 +528,7 @@ public:
 		if (isFixed)
 			return;
 
-		VectorXd f_ext = VectorXd::Zero(currVelocities.size());
-
-		for (int i = 0; i < currVelocities.size() / 3; i++) {
-			double mass = (invMasses(i) > 1e-8) ? (1.0 / invMasses(i)) : 0.0;
-			f_ext.segment(3 * i, 3) = mass * Vector3d(0.0, -9.81, 0.0);
-		}
-
-		VectorXd rhs = M * currVelocities + timeStep * (f_ext - K * (currPositions - origPositions));
+		VectorXd rhs = M * currVelocities - (K * (currPositions - origPositions) - gravityForce) * timeStep;
 		currVelocities = ASolver->solve(rhs);
 	}
 
