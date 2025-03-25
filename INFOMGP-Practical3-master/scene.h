@@ -15,6 +15,7 @@
 #include "auxfunctions.h"
 #include "ccd.h"
 
+
 using namespace Eigen;
 using namespace std;
 
@@ -305,6 +306,35 @@ public:
 		return DJ_d;
 	}
 
+#define DISABLE_PRINT_SHAPE_GLOBAL
+
+	void printShape(std::string name, MatrixXd& eigenObject, bool condition = true)
+	{
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+		return;
+#endif
+		if (!condition) { return; }
+		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+	}
+
+	void printShape(std::string name, SparseMatrix<double>& eigenObject, bool condition = true)
+	{
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+		return;
+#endif
+		if (!condition) { return; }
+		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+	}
+
+	void printShape(std::string name, VectorXd& eigenObject, bool condition = true)
+	{
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+		return;
+#endif
+		if (!condition) { return; }
+		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+	}
+
 	void createGlobalMatrices(const double timeStep, const double _alpha, const double _beta)
 	{
 
@@ -317,6 +347,7 @@ public:
 
 		// Set constant matrices DJ_d and C
 		setDJ_d();
+		printShape("DJ_d", DJ_d);
 		double mu = youngModulus / (2 * (1 + poissonRatio));
 		double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
 
@@ -325,41 +356,105 @@ public:
 		topLeftCorner.fill(lambda);
 		topLeftCorner += 2 * mu * MatrixXd::Identity(3, 3);
 
-		stiffnessTensorC = MatrixXd(6, 6);
+		stiffnessTensorC = MatrixXd::Zero(6, 6);
 		stiffnessTensorC.block(0, 0, 3, 3) = topLeftCorner;
 		stiffnessTensorC.block(3, 3, 3, 3) = bottomRightCorner;
+		printShape("stiffnessTensorC", stiffnessTensorC);
 
-		// Create Global K from local K's
-		K = SparseMatrix<double>();
-		std::vector<Triplet<double>> kTriplets = std::vector<Triplet<double>>();
-		kTriplets.reserve(T.rows() * 12 * 12);
-		for (int i = 0; i < T.rows(); i++)
+		// Create Global kPrime from local kPrimes's
+		SparseMatrix<double> kPrime = SparseMatrix<double>(T.rows() * 12, T.rows() * 12);
+		printShape("kPrime empty", kPrime);
 		{
-			MatrixXd tetGradient = getBarycentricGradient(T.coeff(i, 0), T.coeff(i, 1), T.coeff(i, 2), T.coeff(i, 3));
-			MatrixXd localB = DJ_d * tetGradient;
-			MatrixXd localK = localB.transpose() * stiffnessTensorC * localB;
-			VectorXd flattenedLocalK = Map<VectorXd>(localK.data(), localK.size());
-			for (int i = 0; i < flattenedLocalK.size(); i++)
+			std::vector<Triplet<double>> kTriplets;
+			kTriplets.reserve(T.rows() * 12 * 12);
+			for (int i = 0; i < T.rows(); i++)
 			{
-				kTriplets.emplace_back(i / 12, i % 12, flattenedLocalK[i]);
+				MatrixXd tetGradient = getBarycentricGradient(T.coeff(i, 0), T.coeff(i, 1), T.coeff(i, 2), T.coeff(i, 3));
+				printShape("tetGradient", tetGradient, i == 0);
+				MatrixXd localJ = MatrixXd::Zero(9, 12);
+				localJ.block(0, 0, 3, 4) = tetGradient;
+				localJ.block(3, 4, 3, 4) = tetGradient;
+				localJ.block(6, 8, 3, 4) = tetGradient;
+				printShape("localJ", localJ, i == 0);
+				MatrixXd localB = DJ_d * localJ;
+				printShape("localB", localB, i == 0);
+				MatrixXd localKPrime = localB.transpose() * stiffnessTensorC * localB;
+				printShape("localKPrime", localKPrime, i == 0);
+				VectorXd flattenedLocalK = Map<VectorXd>(localKPrime.data(), localKPrime.size());
+				for (int i = 0; i < flattenedLocalK.size(); i++)
+				{
+					kTriplets.emplace_back(i / 12, i % 12, flattenedLocalK[i]);
+				}
 			}
+			//std::cout << "Fill globalK" << std::endl;
+			//std::cout << "kTriplets length: " << kTriplets.size() << std::endl;
+			kPrime.setFromTriplets(kTriplets.begin(), kTriplets.end());
+			printShape("K filled", K);
 		}
-		K.setFromTriplets(kTriplets.begin(), kTriplets.end());
 
-		// Constructing the global mass matrix M
+
+		// Construct Q
+		SparseMatrix<double> Q = SparseMatrix<double>(12 * T.rows(), currVelocities.size());
+		printShape("Q Empty", Q);
+		{
+			std::vector<Triplet<int>> QTriplets;
+			QTriplets.reserve(T.rows() * 12);
+			for (int i = 0; i < T.rows(); i++)
+			{
+				int vertex0Index = T.coeff(i, 0);
+				int vertex1Index = T.coeff(i, 1);
+				int vertex2Index = T.coeff(i, 2);
+				int vertex3Index = T.coeff(i, 3);
+
+				// V1
+				QTriplets.emplace_back(i * 12 + 0 + 0, vertex0Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 0 + 1, vertex0Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 0 + 2, vertex0Index * 3 + 2, 1);
+
+				// V2
+				QTriplets.emplace_back(i * 12 + 3 + 0, vertex1Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 3 + 1, vertex1Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 3 + 2, vertex1Index * 3 + 2, 1);
+
+				// V3
+				QTriplets.emplace_back(i * 12 + 6 + 0, vertex2Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 6 + 1, vertex2Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 6 + 2, vertex2Index * 3 + 2, 1);
+
+				// V4
+				QTriplets.emplace_back(i * 12 + 9 + 0, vertex3Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 9 + 1, vertex3Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 9 + 2, vertex3Index * 3 + 2, 1);
+			}
+			Q.setFromTriplets(QTriplets.begin(), QTriplets.end());
+			printShape("Q Filled", Q);
+		}
+
+		// Create K
+		K = Q.transpose() * kPrime * Q;
+		printShape("K", K);
+
+		// Constructing the global mass matrix M - WRONG VALUES!
+		M = SparseMatrix<double>(invMasses.rows() * 3, invMasses.rows() * 3);
+		printShape("M Empty", M);
 		std::vector<Triplet<double>> massTriplets;
 		massTriplets.reserve(invMasses.size() * 3);
 		for (int i = 0; i < invMasses.size(); i++)
 		{
 			for (int j = 0; j < 3; j++) {
-				int index = 3 * i + j;
+				int index = i * 3 + j;
 				massTriplets.push_back(Triplet<double>(index, index, 1.0 / invMasses[i]));
 			}
 		}
+		//std::cout << "Fill M" << std::endl;
+		//std::cout << "massTriplets length: " << massTriplets.size() << std::endl;
 		M.setFromTriplets(massTriplets.begin(), massTriplets.end());
+		printShape("M filled", M);
 
 		D = _alpha * M + _beta * K;
+		printShape("D", D);
 		A = M + D * timeStep + K * (timeStep * timeStep);
+		printShape("A", A);
 
 		//Should currently fail since A is empty
 		if (ASolver == NULL)
@@ -401,19 +496,21 @@ public:
 	void integrateVelocity(double timeStep) {
 
 		if (isFixed)
-			return;
+			return;	
 
 		/****************TODO: construct rhs (right-hand side) and use ASolver->solve(rhs) to solve for velocities********/
 
-		VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
-
-		//auto y = ASolver->matrixU() * currVelocities;
-		//auto rhs = ASolver->matrixL() * y;
-
+		//VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
+		//std::cout << "currVelocity length: " << currVelocities.size() << std::endl;
 		//std::cout << "matrixU rows: " << ASolver->matrixU().rows() << ", cols: " << ASolver->matrixU().cols() << std::endl;
 		//std::cout << "matrixL rows: " << ASolver->matrixL().rows() << ", cols: " << ASolver->matrixL().cols() << std::endl;
+
+		auto y = (ASolver->matrixU()) * currVelocities;
+		VectorXd rhs = (ASolver->matrixL()) * y;
+		printShape("rhs", rhs);
+
+		//std::cout << "matrixL rows: " << ASolver->matrixL().rows() << ", cols: " << ASolver->matrixL().cols() << std::endl;
 		//std::cout << "rhs rows: " << rhs.rows() << ", cols: " << rhs.cols() << std::endl;
-		//std::cout << "currVelocity length: " << currVelocities.size() << std::endl;
 
 		currVelocities = ASolver->solve(rhs);
 	}
