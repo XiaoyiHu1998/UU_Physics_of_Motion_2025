@@ -275,10 +275,10 @@ public:
 
 	MatrixXd getBarycentricGradient(int index1, int index2, int index3, int index4)
 	{
-		RowVector3d vertex1 = RowVector3d(currPositions[index1 + 0], currPositions[index1 + 1], currPositions[index1 + 2]);
-		RowVector3d vertex2 = RowVector3d(currPositions[index2 + 0], currPositions[index2 + 1], currPositions[index2 + 2]);
-		RowVector3d vertex3 = RowVector3d(currPositions[index3 + 0], currPositions[index3 + 1], currPositions[index3 + 2]);
-		RowVector3d vertex4 = RowVector3d(currPositions[index4 + 0], currPositions[index4 + 1], currPositions[index4 + 2]);
+		RowVector3d vertex1 = RowVector3d(origPositions[index1 + 0], origPositions[index1 + 1], origPositions[index1 + 2]);
+		RowVector3d vertex2 = RowVector3d(origPositions[index2 + 0], origPositions[index2 + 1], origPositions[index2 + 2]);
+		RowVector3d vertex3 = RowVector3d(origPositions[index3 + 0], origPositions[index3 + 1], origPositions[index3 + 2]);
+		RowVector3d vertex4 = RowVector3d(origPositions[index4 + 0], origPositions[index4 + 1], origPositions[index4 + 2]);
 
 		MatrixXd Pe = MatrixXd::Zero(4,4);
 		Pe.block(0, 0, 4, 1) = Vector4d(1.0, 1.0, 1.0, 1.0);
@@ -288,7 +288,7 @@ public:
 		Pe.block(3, 1, 1, 3) = vertex4;
 
 		MatrixXd almostIdentityMatrix = MatrixXd::Zero(3, 4);
-		almostIdentityMatrix.block(0, 1, 3, 3) = MatrixXd::Zero(3, 3);
+		almostIdentityMatrix.block(0, 1, 3, 3) = MatrixXd::Identity(3, 3);
 
 		return almostIdentityMatrix * Pe.inverse();
 	}
@@ -380,10 +380,12 @@ public:
 				printShape("localB", localB, i == 0);
 				MatrixXd localKPrime = localB.transpose() * stiffnessTensorC * localB;
 				printShape("localKPrime", localKPrime, i == 0);
-				VectorXd flattenedLocalK = Map<VectorXd>(localKPrime.data(), localKPrime.size());
-				for (int i = 0; i < flattenedLocalK.size(); i++)
+				for (int j = 0; j < localKPrime.rows(); j++)
 				{
-					kTriplets.emplace_back(i / 12, i % 12, flattenedLocalK[i]);
+					for (int k = 0; k < localKPrime.cols(); k++)
+					{
+						kTriplets.emplace_back(12 * i + j, 12 * i + k, localKPrime.coeff(j, k));
+					}
 				}
 			}
 			//std::cout << "Fill globalK" << std::endl;
@@ -496,24 +498,19 @@ public:
 	void integrateVelocity(double timeStep) {
 
 		if (isFixed)
-			return;	
+			return;
 
-		/****************TODO: construct rhs (right-hand side) and use ASolver->solve(rhs) to solve for velocities********/
+		VectorXd f_ext = VectorXd::Zero(currVelocities.size());
 
-		//VectorXd rhs = VectorXd::Zero(currVelocities.size());  //REMOVE THIS! it's a stub
-		//std::cout << "currVelocity length: " << currVelocities.size() << std::endl;
-		//std::cout << "matrixU rows: " << ASolver->matrixU().rows() << ", cols: " << ASolver->matrixU().cols() << std::endl;
-		//std::cout << "matrixL rows: " << ASolver->matrixL().rows() << ", cols: " << ASolver->matrixL().cols() << std::endl;
+		for (int i = 0; i < currVelocities.size() / 3; i++) {
+			double mass = (invMasses(i) > 1e-8) ? (1.0 / invMasses(i)) : 0.0;
+			f_ext.segment(3 * i, 3) = mass * Vector3d(0.0, -9.81, 0.0);
+		}
 
-		auto y = (ASolver->matrixU()) * currVelocities;
-		VectorXd rhs = (ASolver->matrixL()) * y;
-		printShape("rhs", rhs);
-
-		//std::cout << "matrixL rows: " << ASolver->matrixL().rows() << ", cols: " << ASolver->matrixL().cols() << std::endl;
-		//std::cout << "rhs rows: " << rhs.rows() << ", cols: " << rhs.cols() << std::endl;
-
+		VectorXd rhs = M * currVelocities + timeStep * (f_ext - K * (currPositions - origPositions));
 		currVelocities = ASolver->solve(rhs);
 	}
+
 
 	//Update the current position with the integrated velocity
 	void integratePosition(double timeStep) {
