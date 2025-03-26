@@ -4,7 +4,7 @@
 using namespace Eigen;
 using namespace std;
 
-typedef enum ConstraintType{DISTANCE, COLLISION, BARRIER} ConstraintType;   //seems redundant, but you can expand it
+typedef enum ConstraintType{DISTANCE, COLLISION, BARRIER, FLEXIBILITY} ConstraintType;   //seems redundant, but you can expand it
 typedef enum ConstraintEqualityType{EQUALITY, INEQUALITY} ConstraintEqualityType;
 
 //there is such constraints per two variables that are equal. That is, for every attached vertex there are three such constraints for (x,y,z);
@@ -20,6 +20,8 @@ public:
   double CRCoeff;
   ConstraintType constraintType;  //The type of the constraint, and will affect the value and the gradient. This SHOULD NOT change after initialization!
   ConstraintEqualityType constraintEqualityType;  //whether the constraint is an equality or an inequality
+
+  double constraintFlexibility = 500;
   
   Constraint(const ConstraintType _constraintType, const ConstraintEqualityType _constraintEqualityType, const VectorXi& _globalIndices, const VectorXd& invMasses, const VectorXd& _refVector, const double _refValue, const double _CRCoeff):constraintType(_constraintType), constraintEqualityType(_constraintEqualityType), refVector(_refVector), refValue(_refValue), CRCoeff(_CRCoeff){
     currValue=0.0;
@@ -61,6 +63,45 @@ public:
       }
     }
   }
+
+
+//#define DISABLE_PRINT_SHAPE_GLOBAL
+
+  void printShape(std::string objectName, MatrixXd& eigenObject, bool printCondition = true)
+  {
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+      return;
+#endif
+      if (!printCondition) return;
+      std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+  }
+
+  void printShape(std::string objectName, SparseMatrix<double>& eigenObject, bool printCondition = true)
+  {
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+      return;
+#endif
+      if (!printCondition) return;
+      std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+  }
+
+  void printShape(std::string objectName, VectorXd& eigenObject, bool printCondition = true)
+  {
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+      return;
+#endif
+      if (!printCondition) return;
+      std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+  }
+
+  void printShape(std::string objectName, RowVectorXd& eigenObject, bool printCondition = true)
+  {
+#ifdef DISABLE_PRINT_SHAPE_GLOBAL
+      return;
+#endif
+      if (!printCondition) return;
+      std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+  }
   
   
   //computes the impulse needed for all particles to resolve the velocity constraint
@@ -85,7 +126,7 @@ public:
     double lambda=-(1+CRCoeff)*((currGradient*currVelocities)(0,0))/denominator(0,0);
     newImpulses=currGradient.transpose()*lambda;
     // cout<<"newImpulses: "<<newImpulses<<endl;
-    
+
     //testing:
     VectorXd newVelocities=currVelocities+invMassMatrix*newImpulses;
     
@@ -95,29 +136,58 @@ public:
   //projects the position unto the constraint
   //returns true if constraint was already good
   bool resolvePositionConstraint(const VectorXd& currPositions, const VectorXd& currVelocities, VectorXd& newPosDiffs, double tolerance){
-    
+      if (constraintType == ConstraintType::FLEXIBILITY)
+      {
+          tolerance = refValue * constraintFlexibility;
+
+          VectorXd vertex0 = currPositions.segment(0, 3);
+          VectorXd vertex1 = currPositions.segment(3, 3);
+
+          double constraintValue = (vertex1 - vertex0).norm() - refValue;
+          constraintValue = constraintValue < 0 ? constraintValue + constraintFlexibility * refValue : constraintValue - constraintFlexibility * refValue;
+
+          if (fabs(constraintValue) <= tolerance) // correctedPositions already set to currCOMPositions before if block
+              return true;
+
+
+          RowVectorXd n = (vertex0 - vertex1).normalized();
+
+          // use currVelocites to transfer mass values
+          double massM1 = invMassMatrix.coeff(0,0);
+          double massM2 = invMassMatrix.coeff(1,1);
+
+          double displacementM1 = -(massM2 / (massM1 + massM2));
+          double displacementM2 = (massM1 / (massM1 + massM2));
+
+          newPosDiffs = VectorXd::Zero(6);
+          newPosDiffs.segment(0, 3) = displacementM1 * constraintValue * n;
+          newPosDiffs.segment(3, 3) = displacementM2 * constraintValue * n;
+          return false;
+      }
+
+
     updateValueGradient(currPositions);
     //cout<<"C(currPositions): "<<currValue<<endl;
     //cout<<"currPositions: "<<currPositions<<endl;
     if ((constraintEqualityType==INEQUALITY)&&(currValue>-tolerance)){
-      //constraint is valid
-      newPosDiffs=VectorXd::Zero(globalIndices.size());
-      return true;
+        //constraint is valid
+        newPosDiffs=VectorXd::Zero(globalIndices.size());
+        return true;
     }
     
     if ((constraintEqualityType==EQUALITY)&&(abs(currValue)<tolerance)){
-      newPosDiffs=VectorXd::Zero(globalIndices.size());
-      return true;
+        newPosDiffs=VectorXd::Zero(globalIndices.size());
+        return true;
     }
    
     MatrixXd denominator=(currGradient*invMassMatrix*currGradient.transpose());
     double lambda=-(currValue)/denominator(0,0);
     newPosDiffs=invMassMatrix*currGradient.transpose()*lambda;
     
-     //cout<<"newPosDiffs: "<<newPosDiffs<<endl;
+        //cout<<"newPosDiffs: "<<newPosDiffs<<endl;
     //cout<<"currPositions+newPosDiffs: "<<currPositions+newPosDiffs<<endl;
     updateValueGradient(currPositions+newPosDiffs);
-   // cout<<"C(currPositions+newPosDiffs): "<<currValue<<endl;
+    // cout<<"C(currPositions+newPosDiffs): "<<currValue<<endl;
    
     return false;
   }

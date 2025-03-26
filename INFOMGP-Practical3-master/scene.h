@@ -547,6 +547,7 @@ public:
 		integratePosition(timeStep);
 	}
 
+	Mesh() = default;
 
 	Mesh(const VectorXd& _origPositions, const MatrixXi& boundF, const MatrixXi& _T, const int _globalOffset, const double _youngModulus, const double _poissonRatio, const double _density, const bool _isFixed, const RowVector3d& userCOM, const RowVector4d& userOrientation) {
 		origPositions = _origPositions;
@@ -726,7 +727,105 @@ public:
 
 		global2Mesh();
 
+		struct ResolveInput
+		{
+			VectorXd currPositions;
+			VectorXd currVelocities;
+			VectorXd positionDiffs;
+			double tolerance = 0.0001;
+			std::vector<Mesh> meshVector;
+			int index0;
+			int index1;
+
+			ResolveInput(Mesh& mesh)
+			{
+				currPositions = VectorXd(6);
+				currVelocities = VectorXd(6);
+				positionDiffs = VectorXd(6);
+				tolerance = 0.0001;
+				meshVector = std::vector<Mesh>();
+				meshVector.push_back(mesh);
+				index0 = 0;
+				index1 = 1;
+			}
+		};
+
 		//Extensions: you can add user constraints in here and resolve them sequentially.
+		std::vector<Constraint> flexibilityConstraints;
+		std::vector<ResolveInput> resolveInputs;
+		for (int i = 0; i < meshes.size(); i++)
+		{
+			for (int j = i + 1; j < meshes.size(); j++)
+			{
+				Mesh& mesh = meshes[i];
+				MatrixXi boundaryFaces = mesh.F;
+				for (int faceIndex = 0; faceIndex < boundaryFaces.rows(); faceIndex++)
+				{
+					int v0Index = boundaryFaces.coeff(faceIndex, 0);
+					int v1Index = boundaryFaces.coeff(faceIndex, 1);
+					int v2Index = boundaryFaces.coeff(faceIndex, 2);
+
+					VectorXd v0Current = mesh.currPositions.segment(v0Index, 3);
+					VectorXd v1Current = mesh.currPositions.segment(v1Index, 3);
+					VectorXd v2Current = mesh.currPositions.segment(v2Index, 3);
+
+					VectorXd v0orig = mesh.origPositions.segment(v0Index, 3);
+					VectorXd v1orig = mesh.origPositions.segment(v1Index, 3);
+					VectorXd v2orig = mesh.origPositions.segment(v2Index, 3);
+
+					// Edges
+					// 1-0
+					// 2-1
+					// 0-2
+					VectorXd invMasses = VectorXd(2);
+					invMasses[0] = mesh.invMasses[v0Index];
+					invMasses[1] = mesh.invMasses[v1Index];
+					Constraint constraintEdge0 = Constraint(ConstraintType::FLEXIBILITY, ConstraintEqualityType::INEQUALITY, VectorXi(), invMasses, VectorXd(), (v1orig - v0orig).norm(), 1.0);
+					ResolveInput resolveInput0(mesh);
+					resolveInput0.currPositions << v0Current, v1Current;
+					resolveInput0.positionDiffs = VectorXd(6);
+					resolveInput0.index0 = v0Index;
+					resolveInput0.index1 = v1Index;
+
+					invMasses = VectorXd(2);
+					invMasses[0] = mesh.invMasses[v1Index];
+					invMasses[1] = mesh.invMasses[v2Index];
+					Constraint constraintEdge1 = Constraint(ConstraintType::FLEXIBILITY, ConstraintEqualityType::INEQUALITY, VectorXi(), invMasses, VectorXd(), (v2orig - v1orig).norm(), 1.0);
+					ResolveInput resolveInput1(mesh);
+					resolveInput1.currPositions << v1Current, v2Current;
+					resolveInput1.positionDiffs = VectorXd(6);
+					resolveInput1.index0 = v1Index;
+					resolveInput1.index1 = v2Index;
+
+					invMasses = VectorXd(2);
+					invMasses[0] = mesh.invMasses[v0Index];
+					invMasses[1] = mesh.invMasses[v2Index];
+					Constraint constraintEdge2 = Constraint(ConstraintType::FLEXIBILITY, ConstraintEqualityType::INEQUALITY, VectorXi(), invMasses, VectorXd(), (v0orig - v2orig).norm(), 1.0);
+					ResolveInput resolveInput2(mesh);
+					resolveInput2.currPositions << v0Current, v2Current;
+					resolveInput2.positionDiffs = VectorXd(6);
+					resolveInput2.index0 = v0Index;
+					resolveInput2.index1 = v2Index;
+
+					flexibilityConstraints.push_back(constraintEdge0);
+					flexibilityConstraints.push_back(constraintEdge1);
+					flexibilityConstraints.push_back(constraintEdge2);
+
+					resolveInputs.push_back(resolveInput0);
+					resolveInputs.push_back(resolveInput1);
+					resolveInputs.push_back(resolveInput2);
+				}
+			}
+		}
+
+		for (int i = 0; i < flexibilityConstraints.size(); i++)
+		{
+			ResolveInput resolveInput = resolveInputs[i];
+			flexibilityConstraints[i].resolvePositionConstraint(resolveInput.currPositions, resolveInput.currVelocities, resolveInput.positionDiffs, resolveInput.tolerance);
+
+			resolveInput.meshVector[0].currPositions.segment(resolveInput.index0 * 3, 3) = resolveInput.positionDiffs.segment(0, 3);
+			resolveInput.meshVector[0].currPositions.segment(resolveInput.index1 * 3, 3) = resolveInput.positionDiffs.segment(3, 3);
+		}
 
 	}
 
