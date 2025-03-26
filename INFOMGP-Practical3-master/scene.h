@@ -276,19 +276,14 @@ public:
 	}
 
 
-	MatrixXd getBarycentricGradient(int index1, int index2, int index3, int index4)
+	MatrixXd getBarycentricGradient(int index0, int index1, int index2, int index3)
 	{
-		RowVector3d vertex1 = RowVector3d(origPositions[index1 + 0], origPositions[index1 + 1], origPositions[index1 + 2]);
-		RowVector3d vertex2 = RowVector3d(origPositions[index2 + 0], origPositions[index2 + 1], origPositions[index2 + 2]);
-		RowVector3d vertex3 = RowVector3d(origPositions[index3 + 0], origPositions[index3 + 1], origPositions[index3 + 2]);
-		RowVector3d vertex4 = RowVector3d(origPositions[index4 + 0], origPositions[index4 + 1], origPositions[index4 + 2]);
-
 		MatrixXd Pe = MatrixXd::Zero(4,4);
 		Pe.block(0, 0, 4, 1) = Vector4d(1.0, 1.0, 1.0, 1.0);
-		Pe.block(0, 1, 1, 3) = vertex1;
-		Pe.block(1, 1, 1, 3) = vertex2;
-		Pe.block(2, 1, 1, 3) = vertex3;
-		Pe.block(3, 1, 1, 3) = vertex4;
+		Pe.block(0, 1, 1, 3) = RowVector3d(origPositions[index0 * 3 + 0], origPositions[index0 * 3 + 1], origPositions[index0 * 3 + 2]);
+		Pe.block(1, 1, 1, 3) = RowVector3d(origPositions[index1 * 3 + 0], origPositions[index1 * 3 + 1], origPositions[index1 * 3 + 2]);
+		Pe.block(2, 1, 1, 3) = RowVector3d(origPositions[index2 * 3 + 0], origPositions[index2 * 3 + 1], origPositions[index2 * 3 + 2]);
+		Pe.block(3, 1, 1, 3) = RowVector3d(origPositions[index3 * 3 + 0], origPositions[index3 * 3 + 1], origPositions[index3 * 3 + 2]);
 
 		MatrixXd almostIdentityMatrix = MatrixXd::Zero(3, 4);
 		almostIdentityMatrix.block(0, 1, 3, 3) = MatrixXd::Identity(3, 3);
@@ -299,43 +294,43 @@ public:
 	MatrixXd setDJ_d()
 	{
 		DJ_d = MatrixXd(6, 9);
-		DJ_d << 1, 0, 0, 0, 0, 0, 0, 0, 0,
-				0, 0, 0, 0, 1, 0, 0, 0, 0,
-				0, 0, 0, 0, 0, 0, 0, 0, 1,
-				0, 0.5, 0, 0.5, 0, 0, 0, 0, 0,
-				0, 0, 0, 0, 0, 0.5, 0, 0.5, 0,
-				0, 0, 0.5, 0, 0, 0, 0.5, 0, 0;
+		DJ_d << 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+				0.0, 0.5, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5, 0.0,
+				0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0;
 
 		return DJ_d;
 	}
 
 #define DISABLE_PRINT_SHAPE_GLOBAL
 
-	void printShape(std::string name, MatrixXd& eigenObject, bool condition = true)
+	void printShape(std::string objectName, MatrixXd& eigenObject, bool printCondition = true)
 	{
 #ifdef DISABLE_PRINT_SHAPE_GLOBAL
 		return;
 #endif
-		if (!condition) { return; }
-		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+		if (!printCondition) return;
+		std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
 	}
 
-	void printShape(std::string name, SparseMatrix<double>& eigenObject, bool condition = true)
+	void printShape(std::string objectName, SparseMatrix<double>& eigenObject, bool printCondition = true)
 	{
 #ifdef DISABLE_PRINT_SHAPE_GLOBAL
 		return;
 #endif
-		if (!condition) { return; }
-		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+		if (!printCondition) return;
+		std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
 	}
 
-	void printShape(std::string name, VectorXd& eigenObject, bool condition = true)
+	void printShape(std::string objectName, VectorXd& eigenObject, bool printCondition = true)
 	{
 #ifdef DISABLE_PRINT_SHAPE_GLOBAL
 		return;
 #endif
-		if (!condition) { return; }
-		std::cout << "Matrix [" << name << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
+		if (!printCondition) return;
+		std::cout << "Matrix [" << objectName << "]:" << "(" << eigenObject.rows() << "," << eigenObject.cols() << ")" << std::endl;
 	}
 
 	void createGlobalMatrices(const double timeStep, const double _alpha, const double _beta)
@@ -348,41 +343,42 @@ public:
 		// D is damping matrix - Done!
 		// K is stiffness matrix - Done! (needs testing!)
 
-		// Set constant matrices DJ_d and C
-		setDJ_d();
-		printShape("DJ_d", DJ_d);
-		double mu = youngModulus / (2 * (1 + poissonRatio));
-		double lambda = poissonRatio * youngModulus / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
+		// Set C
+		double mu = youngModulus / (2.0 * (1.0 + poissonRatio));
+		double lambda = poissonRatio * youngModulus / ((1.0 + poissonRatio) * (1.0 - 2.0 * poissonRatio));
 
-		MatrixXd bottomRightCorner = mu * MatrixXd::Identity(3, 3);
 		MatrixXd topLeftCorner = MatrixXd(3, 3);
 		topLeftCorner.fill(lambda);
-		topLeftCorner += 2 * mu * MatrixXd::Identity(3, 3);
-
-		stiffnessTensorC = MatrixXd::Zero(6, 6);
+		topLeftCorner += 2.0 * mu * MatrixXd::Identity(3, 3);
+		stiffnessTensorC = mu * MatrixXd::Identity(6, 6);
 		stiffnessTensorC.block(0, 0, 3, 3) = topLeftCorner;
-		stiffnessTensorC.block(3, 3, 3, 3) = bottomRightCorner;
-		printShape("stiffnessTensorC", stiffnessTensorC);
+
+		// Set DJ_d
+		setDJ_d();
+		printShape("DJ_d", DJ_d);
 
 		// Create Global kPrime from local kPrimes's
 		SparseMatrix<double> kPrime = SparseMatrix<double>(T.rows() * 12, T.rows() * 12);
-		printShape("kPrime empty", kPrime);
 		{
 			std::vector<Triplet<double>> kTriplets;
 			kTriplets.reserve(T.rows() * 12 * 12);
+
 			for (int i = 0; i < T.rows(); i++)
 			{
 				MatrixXd tetGradient = getBarycentricGradient(T.coeff(i, 0), T.coeff(i, 1), T.coeff(i, 2), T.coeff(i, 3));
-				printShape("tetGradient", tetGradient, i == 0);
 				MatrixXd localJ = MatrixXd::Zero(9, 12);
 				localJ.block(0, 0, 3, 4) = tetGradient;
 				localJ.block(3, 4, 3, 4) = tetGradient;
 				localJ.block(6, 8, 3, 4) = tetGradient;
-				printShape("localJ", localJ, i == 0);
+
 				MatrixXd localB = DJ_d * localJ;
-				printShape("localB", localB, i == 0);
 				MatrixXd localKPrime = localB.transpose() * stiffnessTensorC * localB;
+
+				printShape("tetGradient", tetGradient, i == 0);
+				printShape("localJ", localJ, i == 0);
+				printShape("localB", localB, i == 0);
 				printShape("localKPrime", localKPrime, i == 0);
+
 				for (int j = 0; j < localKPrime.rows(); j++)
 				{
 					for (int k = 0; k < localKPrime.cols(); k++)
@@ -394,89 +390,92 @@ public:
 			//std::cout << "Fill globalK" << std::endl;
 			//std::cout << "kTriplets length: " << kTriplets.size() << std::endl;
 			kPrime.setFromTriplets(kTriplets.begin(), kTriplets.end());
-			printShape("K filled", K);
 		}
 
 
 		// Construct Q
 		SparseMatrix<double> Q = SparseMatrix<double>(12 * T.rows(), currVelocities.size());
-		printShape("Q Empty", Q);
 		{
 			std::vector<Triplet<int>> QTriplets;
 			QTriplets.reserve(T.rows() * 12);
 			for (int i = 0; i < T.rows(); i++)
 			{
-				int vertex0Index = T.coeff(i, 0);
-				int vertex1Index = T.coeff(i, 1);
-				int vertex2Index = T.coeff(i, 2);
-				int vertex3Index = T.coeff(i, 3);
+				int vertexIndex0 = T.coeff(i, 0) * 3;
+				int vertexIndex1 = T.coeff(i, 1) * 3;
+				int vertexIndex2 = T.coeff(i, 2) * 3;
+				int vertexIndex3 = T.coeff(i, 3) * 3;
 
 				//// V1
-				//QTriplets.emplace_back(i * 12 + 0 + 0, vertex0Index * 3 + 0, 1);
-				//QTriplets.emplace_back(i * 12 + 0 + 1, vertex0Index * 3 + 1, 1);
-				//QTriplets.emplace_back(i * 12 + 0 + 2, vertex0Index * 3 + 2, 1);
+				//QTriplets.emplace_back(i * 12 + 0 + 0, vertexIndex0 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 0 + 1, vertexIndex0 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 0 + 2, vertexIndex0 + 2, 1);
 
 				//// V2
-				//QTriplets.emplace_back(i * 12 + 3 + 0, vertex1Index * 3 + 0, 1);
-				//QTriplets.emplace_back(i * 12 + 3 + 1, vertex1Index * 3 + 1, 1);
-				//QTriplets.emplace_back(i * 12 + 3 + 2, vertex1Index * 3 + 2, 1);
+				//QTriplets.emplace_back(i * 12 + 3 + 0, vertexIndex1 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 3 + 1, vertexIndex1 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 3 + 2, vertexIndex1 + 2, 1);
 
 				//// V3
-				//QTriplets.emplace_back(i * 12 + 6 + 0, vertex2Index * 3 + 0, 1);
-				//QTriplets.emplace_back(i * 12 + 6 + 1, vertex2Index * 3 + 1, 1);
-				//QTriplets.emplace_back(i * 12 + 6 + 2, vertex2Index * 3 + 2, 1);
+				//QTriplets.emplace_back(i * 12 + 6 + 0, vertexIndex2 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 6 + 1, vertexIndex2 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 6 + 2, vertexIndex2 + 2, 1);
 
 				//// V4
-				//QTriplets.emplace_back(i * 12 + 9 + 0, vertex3Index * 3 + 0, 1);
-				//QTriplets.emplace_back(i * 12 + 9 + 1, vertex3Index * 3 + 1, 1);
-				//QTriplets.emplace_back(i * 12 + 9 + 2, vertex3Index * 3 + 2, 1);
+				//QTriplets.emplace_back(i * 12 + 9 + 0, vertexIndex3 + 0, 1);
+				//QTriplets.emplace_back(i * 12 + 9 + 1, vertexIndex3 + 1, 1);
+				//QTriplets.emplace_back(i * 12 + 9 + 2, vertexIndex3 + 2, 1);
 
 				// X Components
-				QTriplets.emplace_back(i * 12 + 0 + 0, vertex0Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 0 + 1, vertex1Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 0 + 2, vertex2Index * 3 + 0, 1);
-				QTriplets.emplace_back(i * 12 + 0 + 3, vertex3Index * 3 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 0, vertexIndex0 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 1, vertexIndex1 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 2, vertexIndex2 + 0, 1);
+				QTriplets.emplace_back(i * 12 + 3, vertexIndex3 + 0, 1);
 
 				// Y Components
-				QTriplets.emplace_back(i * 12 + 4 + 0, vertex0Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 4 + 1, vertex1Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 4 + 2, vertex2Index * 3 + 1, 1);
-				QTriplets.emplace_back(i * 12 + 4 + 3, vertex3Index * 3 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 4, vertexIndex0 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 5, vertexIndex1 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 6, vertexIndex2 + 1, 1);
+				QTriplets.emplace_back(i * 12 + 7, vertexIndex3 + 1, 1);
 
 				// Z Components
-				QTriplets.emplace_back(i * 12 + 8 + 0, vertex0Index * 3 + 2, 1);
-				QTriplets.emplace_back(i * 12 + 8 + 1, vertex1Index * 3 + 2, 1);
-				QTriplets.emplace_back(i * 12 + 8 + 2, vertex2Index * 3 + 2, 1);
-				QTriplets.emplace_back(i * 12 + 8 + 3, vertex3Index * 3 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 8,  vertexIndex0 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 9,  vertexIndex1 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 10, vertexIndex2 + 2, 1);
+				QTriplets.emplace_back(i * 12 + 11, vertexIndex3 + 2, 1);
 			}
 			Q.setFromTriplets(QTriplets.begin(), QTriplets.end());
-			printShape("Q Filled", Q);
 		}
 
 		// Create K
 		K = Q.transpose() * kPrime * Q;
-		printShape("K", K);
 
 		// Constructing the global mass matrix M - WRONG VALUES!
 		M = SparseMatrix<double>(invMasses.rows() * 3, invMasses.rows() * 3);
-		printShape("M Empty", M);
 		std::vector<Triplet<double>> massTriplets;
 		massTriplets.reserve(invMasses.size() * 3);
 		for (int i = 0; i < invMasses.size(); i++)
 		{
 			for (int j = 0; j < 3; j++) {
 				int index = i * 3 + j;
-				massTriplets.push_back(Triplet<double>(index, index, 1.0 / invMasses[i]));
+				massTriplets.emplace_back(index, index, 1.0 / invMasses[i]);
 			}
 		}
 		//std::cout << "Fill M" << std::endl;
 		//std::cout << "massTriplets length: " << massTriplets.size() << std::endl;
 		M.setFromTriplets(massTriplets.begin(), massTriplets.end());
-		printShape("M filled", M);
 
 		D = _alpha * M + _beta * K;
-		printShape("D", D);
 		A = M + D * timeStep + K * (timeStep * timeStep);
+
+		printShape("stiffnessTensorC", stiffnessTensorC);
+		printShape("kPrime empty", kPrime);
+		printShape("kPrime filled", kPrime);
+		printShape("Q Empty", Q);
+		printShape("Q Filled", Q);
+		printShape("K", K);
+		printShape("M Empty", M);
+		printShape("M filled", M);
+		printShape("D", D);
 		printShape("A", A);
 
 		//Should currently fail since A is empty
@@ -523,8 +522,8 @@ public:
 	}
 
 	//performing the integration step of the soft body.
-	void integrateVelocity(double timeStep) {
-
+	void integrateVelocity(double timeStep) 
+	{
 		if (isFixed)
 			return;
 
